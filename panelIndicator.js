@@ -1,85 +1,100 @@
-// Top-bar indicator (PanelMenu.Button) for WinV.
+// Top-bar indicator AND popup host for WinV.
 //
-// A small clipboard icon in the system status area. Click opens the popup at
-// the clipboard tab; right-click opens preferences. Provides always-on
-// discoverability (the user doesn't need to remember the shortcuts).
+// This is the single component that owns the menu. It extends PanelMenu.Button
+// (which gives us `this.menu`, a PopupMenu.PopupMenu) and builds the clipboard
+// + emoji UI inside it. PopupMenu manages the modal grab, keyboard focus, Esc,
+// and click-outside-to-close automatically — that's why we use it instead of a
+// hand-rolled St.Widget popup (which kept breaking the grab state).
+//
+// Opening at the cursor (Windows-style) uses the _cursorActor trick from
+// clipboard-indicator: a 1x1 invisible actor we move to the pointer and set as
+// the menu's sourceActor right before opening.
 
-import GObject from 'gi://GObject';
 import Clutter from 'gi://Clutter';
+import GObject from 'gi://GObject';
 import St from 'gi://St';
+
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-const Indicator = GObject.registerClass(
+import { POPUP_WIDTH, POPUP_MAX_HEIGHT } from './constants.js';
+import { WinvContent } from './winvView.js';
+
+export const WinVIndicator = GObject.registerClass(
 class WinVIndicator extends PanelMenu.Button {
     _init() {
-        // 0 = left-aligned menu; nameText used for a11y.
-        super._init(0.0, 'WinV');
+        // 0.5 = center-aligned; nameText for a11y. dontCreateMenu=false (default).
+        super._init(0.5, 'WinV');
 
         this.add_child(new St.Icon({
             icon_name: 'edit-paste-symbolic',
             style_class: 'system-status-icon',
         }));
-    }
 
-    // Build the dropdown menu items.
-    rebuildMenu({ onOpenClipboard, onOpenEmoji, onPreferences, onClearHistory }) {
-        this.menu.removeAll();
+        // Invisible 1x1 actor we reposition to the pointer so the PopupMenu
+        // (which opens relative to its sourceActor) appears at the cursor.
+        this._cursorActor = new Clutter.Actor({ opacity: 0, width: 1, height: 1 });
+        Main.uiGroup.add_child(this._cursorActor);
 
-        const itemClip = new PopupMenu.PopupMenuItem('Abrir área de transferência');
-        itemClip.connect('activate', onOpenClipboard);
-        this.menu.addMenuItem(itemClip);
-
-        const itemEmoji = new PopupMenu.PopupMenuItem('Abrir emojis');
-        itemEmoji.connect('activate', onOpenEmoji);
-        this.menu.addMenuItem(itemEmoji);
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        const itemClear = new PopupMenu.PopupMenuItem('Limpar histórico');
-        itemClear.connect('activate', onClearHistory);
-        this.menu.addMenuItem(itemClear);
-
-        const itemPrefs = new PopupMenu.PopupMenuItem('Preferências');
-        itemPrefs.connect('activate', onPreferences);
-        this.menu.addMenuItem(itemPrefs);
-    }
-
-    // Override: left-click should toggle the popup, not just open the menu.
-    // We keep the menu for right-click / pointer behavior.
-    vfunc_event(event) {
-        if (event.type() === Clutter.EventType.BUTTON_PRESS &&
-            event.get_button() === Clutter.BUTTON_PRIMARY) {
-            // Handled by the 'button-press-event' connection in setup().
-            return Clutter.EVENT_PROPAGATE;
-        }
-        return super.vfunc_event(event);
-    }
-});
-
-export class PanelIndicator {
-    constructor(callbacks) {
-        this._callbacks = callbacks;
-        this._indicator = new Indicator();
-    }
-
-    init() {
-        // Left-click toggles the clipboard popup (Windows-ish "open here").
-        this._indicator.connect('button-press-event', (_i, event) => {
-            if (event.get_button() === Clutter.BUTTON_PRIMARY) {
-                this._callbacks.onOpenClipboard();
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
+        // On close, restore the sourceActor to the button itself so the menu
+        // doesn't try to position relative to a stale cursor location next time.
+        this.menu.connect('open-state-changed', (_m, isOpen) => {
+            if (!isOpen) this.menu.sourceActor = this;
         });
-        this._indicator.rebuildMenu(this._callbacks);
+
+        this._content = null;  // built lazily on first open
     }
 
-    get actor() { return this._indicator; }
-    get menu() { return this._indicator.menu; }
+    // Build (or rebuild) the menu contents: header + tab bar + shared search +
+    // content area. Called once on first open.
+    _ensureContent(context) {
+        if (this._content) return;
+        this._content = new WinvContent(context);
+        this._content.buildInto(this.menu);
+    }
+
+    // Open the menu at the pointer with the given tab selected.
+    openAtCursor(tab, context) {
+        this._ensureContent(context);
+        this._content.switchTab(tab);
+
+        // Cap the popup height so long lists (emoji grid, big history) scroll
+        // inside instead of growing to fill the whole screen.
+        const monitor = Main.layoutManager.currentMonitor;
+        const maxHeight = Math.min(POPUP_MAX_HEIGHT, monitor.height - 24);
+        this.menu.actor.set_style(`max-height: ${maxHeight}px;`);
+
+        // Position the popup at the cursor (Windows-style) by repointing the
+        // sourceActor. Clamp the anchor point so the popup won't open with its
+        // bottom past the screen edge (which would push it off-screen).
+        if (context.settings.get_boolean('open-at-cursor')) {
+            const [px, py] = global.get_pointer();
+            // The menu opens with its top-left at the sourceActor, so if the
+            // cursor is near the bottom edge, anchor higher up.
+            const anchorY = Math.min(py, monitor.y + monitor.height - maxHeight - 8);
+            const anchorX = Math.min(px, monitor.x + monitor.width - POPUP_WIDTH - 8);
+            this._cursorActor.set_position(Math.max(anchorX, monitor.x + 8),
+                                           Math.max(anchorY, monitor.y + 8));
+            this.menu.sourceActor = this._cursorActor;
+        }
+
+        this.menu.open();
+    }
+
+    close() {
+        if (this.menu.isOpen) this.menu.close();
+    }
+
+    get isOpen() { return this.menu.isOpen; }
 
     destroy() {
-        this._indicator.destroy();
-        this._indicator = null;
+        if (this._content) { this._content.destroy(); this._content = null; }
+        if (this._cursorActor) {
+            Main.uiGroup.remove_child(this._cursorActor);
+            this._cursorActor.destroy();
+            this._cursorActor = null;
+        }
+        super.destroy();
     }
-}
+});

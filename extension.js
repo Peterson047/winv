@@ -1,6 +1,7 @@
-// WinV — Windows-style clipboard history (Win+V) + emoji picker (Win+.)
+// WinV — Windows-style clipboard history (Win+V) + emoji picker (Win+E)
 // GNOME 50 / ESM entry point.
 
+import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
@@ -14,9 +15,7 @@ import { Prefs } from './constants.js';
 import { Registry } from './registry.js';
 import { ClipboardManager } from './clipboardManager.js';
 import { Keyboard } from './keyboard.js';
-import { Popup } from './popup.js';
-import { WinvView } from './winvView.js';
-import { PanelIndicator } from './panelIndicator.js';
+import { WinVIndicator } from './panelIndicator.js';
 
 const TAB = { CLIPBOARD: 'clipboard', EMOJI: 'emoji' };
 
@@ -26,40 +25,40 @@ export default class WinVExtension extends Extension {
         this._registry = new Registry({ settings: this._settings, uuid: this.uuid });
         this._manager = new ClipboardManager({ settings: this._settings, registry: this._registry });
         this._keyboard = new Keyboard();
-        this._popup = new Popup();
-        this._view = null;
 
         // Load persisted history + start listening for clipboard changes.
         this._manager.init().then(() => this._manager.start())
             .catch(e => console.error('WinV init:', e));
 
-        // Preload emoji data (async, non-blocking) so the emoji tab opens fast.
+        // Preload emoji data so the emoji tab opens fast.
         this._emojiData = [];
         this._loadEmojiData();
+
+        // Top-bar indicator — owns the PopupMenu (the popup window).
+        this._indicator = new WinVIndicator();
+        // Left-click opens the clipboard tab (Windows-style "open here").
+        this._indicator.connect('button-press-event', (_i, event) => {
+            if (event.get_button() === Clutter.BUTTON_PRIMARY) {
+                this.open(TAB.CLIPBOARD);
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+        Main.panel.addToStatusArea('winv', this._indicator, 1, 'right');
 
         // Keybindings
         this._boundKeys = [];
         this._syncKeybindings();
         this._enableKeysChangedId = this._settings.connect(
             `changed::${Prefs.ENABLE_KEYBINDINGS}`, () => this._syncKeybindings());
-
-        // Top-bar indicator
-        this._indicator = new PanelIndicator({
-            onOpenClipboard: () => this.open(TAB.CLIPBOARD),
-            onOpenEmoji:     () => this.open(TAB.EMOJI),
-            onPreferences:   () => this.openPreferences(),
-            onClearHistory:  () => this._manager.clearAll()
-                .then(() => { if (this._view) this._view._clipboardView?._rebuildRows?.(); })
-                .catch(e => console.error('WinV clear:', e)),
-        });
-        this._indicator.init();
-        Main.panel.addToStatusArea('winv', this._indicator.actor, 1, 'right');
     }
 
     disable() {
-        if (this._view)     { this._view.destroy();     this._view = null; }
-        if (this._popup)    { this._popup.destroy();    this._popup = null; }
-        if (this._indicator){ this._indicator.destroy(); this._indicator = null; }
+        if (this._indicator) {
+            this._indicator.close();
+            this._indicator.destroy();
+            this._indicator = null;
+        }
         if (this._manager)  { this._manager.stop();     this._manager = null; }
         if (this._keyboard) { this._keyboard.destroy(); this._keyboard = null; }
         if (this._enableKeysChangedId) {
@@ -97,30 +96,23 @@ export default class WinVExtension extends Extension {
 
     open(tab) {
         // Toggle: if already open, close.
-        if (this._popup.isOpen) { this._popup.close(); return; }
-
-        this._popup.setOnClose(() => {
-            if (this._view) { this._view.destroy(); this._view = null; }
-        });
-
-        this._popup.open(() => {
-            this._view = new WinvView({
-                manager: this._manager,
-                settings: this._settings,
-                registry: this._registry,
-                extension: this,
-                popup: this._popup,
-                initialTab: tab || TAB.CLIPBOARD,
-                emojiData: this._emojiData,
-                onClosed: () => this._popup.close(),
-            });
-            return this._view.build();
-        });
+        if (this._indicator.isOpen) { this._indicator.close(); return; }
+        this._indicator.openAtCursor(tab || TAB.CLIPBOARD, this._context());
     }
 
-    // Load emoji.json (bundled) once, in the background. The emoji tab reads
-    // this._emojiData when built; if the user opens Win+. before loading
-    // finishes, the tab shows empty until the next open.
+    _context() {
+        return {
+            manager: this._manager,
+            settings: this._settings,
+            registry: this._registry,
+            extension: this,
+            popup: this._indicator,
+            emojiData: this._emojiData,
+            onClosed: () => this._indicator.close(),
+        };
+    }
+
+    // Load emoji.json (bundled) once, in the background.
     _loadEmojiData() {
         const path = `${this.path}/emoji.json`;
         const file = Gio.file_new_for_path(path);
@@ -138,17 +130,12 @@ export default class WinVExtension extends Extension {
 
     // ---- helpers used by views -------------------------------------------
 
-    // Copy text to the clipboard and (if enabled) auto-paste into focus.
-    // `closePopup` is called FIRST so the modal grab is released and keyboard
-    // focus returns to the target app before we synthesize Ctrl+V.
     async copyAndPaste(text, closePopup) {
         const clipboard = St.Clipboard.get_default();
         clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
         if (closePopup) closePopup();
         if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
-            // Give the shell time to pop the modal grab and restore focus to
-            // the target app before we emit the synthetic Ctrl+V.
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
                 this.pasteIntoFocus();
                 return GLib.SOURCE_REMOVE;
             });

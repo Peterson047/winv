@@ -15,8 +15,8 @@
     </key>
 
     <key name="emoji-keybinding" type="as">
-      <default><![CDATA[['<Super>period']]]></default>
-      <summary>Open the emoji picker</summary>
+      <default><![CDATA[['<Super>e']]]></default>
+      <summary>Open the emoji picker (Super+. conflicts with IBus)</summary>
     </key>
 
     <!-- Behaviour -->

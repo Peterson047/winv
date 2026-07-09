@@ -42,7 +42,9 @@ export const MIMETYPE_NORMALIZE = {
 export const CLIPBOARD_TYPE_STR = 'CLIPBOARD'; // for St.ClipboardType.CLIPBOARD
 
 // UI sizing (logical px); final styling lives in stylesheet.css.
-export const POPUP_WIDTH = 380;
-export const POPUP_MAX_HEIGHT = 460;
-export const ROW_PREVIEW_CHARS = 60;
-export const EMOJI_GRID_COLUMNS = 8;
+// UI sizing (logical px); final styling lives in stylesheet.css.
+// Compact, like the Windows 11 flyout (~300px wide).
+export const POPUP_WIDTH = 320;
+export const POPUP_MAX_HEIGHT = 440;
+export const ROW_PREVIEW_CHARS = 48;
+export const EMOJI_GRID_COLUMNS = 7;
