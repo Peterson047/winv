@@ -17,7 +17,7 @@ import Shell from 'gi://Shell';
 import GObject from 'gi://GObject';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { POPUP_WIDTH } from './constants.js';
+import { POPUP_WIDTH, POPUP_MAX_HEIGHT } from './constants.js';
 
 const MARGIN = 8; // px kept between popup edge and monitor edge
 
@@ -42,12 +42,19 @@ const WinVOverlay = GObject.registerClass({
         this.add_child(content);
         this._content = content;
 
-        // Natural size before we constrain width.
-        const [, natHeight] = content.get_preferred_height(POPUP_WIDTH);
         const w = POPUP_WIDTH;
-        const h = Math.min(natHeight, this._monitor.height - 2 * MARGIN);
-
         content.set_width(w);
+
+        // Cap the popup height so long lists (emoji grid, big history) scroll
+        // inside a St.ScrollView instead of growing to fill the whole screen.
+        const maxHeight = Math.min(
+            POPUP_MAX_HEIGHT,
+            this._monitor.height - 2 * MARGIN,
+        );
+        // Setting height directly forces the inner ScrollView to activate.
+        const [, natHeight] = content.get_preferred_height(w);
+        const h = Math.min(natHeight, maxHeight);
+        content.set_height(h);
 
         let [px, py] = global.get_pointer();
         px -= this._monitor.x;
@@ -66,14 +73,16 @@ const WinVOverlay = GObject.registerClass({
     }
 
     vfunc_button_press_event(event) {
-        // Only dismiss when the click is OUTSIDE the content box.
-        // Events on inner widgets (buttons/rows) either stop propagation
-        // themselves or bubble up here with a source inside _content.
+        // Dismiss ONLY when the click is truly outside the popup.
+        // - If the source is the overlay itself → outside (close).
+        // - If the source is the content box or any descendant → inside (keep).
+        // - If null (shouldn't happen with reactive content), treat as outside.
         const source = event.get_source();
-        if (this._content && this._content.contains(source))
-            return Clutter.EVENT_PROPAGATE;
-        this.emit('close-requested');
-        return Clutter.EVENT_STOP;
+        const inside = source && this._content && this._content.contains(source);
+        if (!inside)
+            this.emit('close-requested');
+        // Always propagate so inner widgets still receive their button-press.
+        return Clutter.EVENT_PROPAGATE;
     }
 
     vfunc_key_press_event(event) {
@@ -103,9 +112,21 @@ export class Popup {
         const overlay = new WinVOverlay();
         global.stage.add_child(overlay);
 
-        const content = buildContent();
+        // Build the content BEFORE taking the modal grab, and tear down the
+        // overlay if building throws — otherwise a half-built view leaves an
+        // invisible fullscreen overlay capturing all input ("modal invisível").
+        let content;
+        try {
+            content = buildContent();
+        } catch (e) {
+            console.error('WinV: view build failed:', e);
+            global.stage.remove_child(overlay);
+            overlay.destroy();
+            return;
+        }
         if (!(content instanceof Clutter.Actor)) {
             console.error('WinV: view factory did not return a Clutter.Actor');
+            global.stage.remove_child(overlay);
             overlay.destroy();
             return;
         }
@@ -137,30 +158,45 @@ export class Popup {
 
     setOnClose(cb) { this._onClose = cb; }
 
-    // Returns a small controller the view can hand to its drag handle.
-    // The view calls begin() on button-press, update(dx,dy) on motion, end() on release.
-    get dragController() {
-        if (!this._overlay || !this._overlay._content) return null;
+    // Begin a drag operation. Motion/release are tracked on the overlay (which
+    // is the modal-grab actor and therefore receives captured pointer events).
+    // `handleActor` is the title label — used only to restore its cursor.
+    beginDrag(handleActor, startX, startY) {
+        if (!this._overlay) return;
         const content = this._overlay._content;
         const monitor = this._overlay._monitor;
-        return {
-            begin() { /* hook for cursor change, handled in view */ },
-            update(dx, dy) {
-                if (dx === 0 && dy === 0) return;
-                let [x, y] = content.get_position();
-                x += dx; y += dy;
-                // Clamp so the popup stays reachable on screen.
-                const w = content.width, h = content.height;
-                if (x < monitor.x + MARGIN) x = monitor.x + MARGIN;
-                if (y < monitor.y + MARGIN) y = monitor.y + MARGIN;
-                if (x + w > monitor.x + monitor.width - MARGIN)
-                    x = monitor.x + monitor.width - MARGIN - w;
-                if (y + h > monitor.y + monitor.height - MARGIN)
-                    y = monitor.y + monitor.height - MARGIN - h;
-                content.set_position(x, y);
-            },
-            end() { /* hook */ },
+        const overlay = this._overlay;
+        let lastX = startX, lastY = startY;
+
+        const onMotion = (_o, event) => {
+            const [x, y] = event.get_coords();
+            const dx = x - lastX, dy = y - lastY;
+            if (dx === 0 && dy === 0) return Clutter.EVENT_PROPAGATE;
+            lastX = x; lastY = y;
+
+            let [px, py] = content.get_position();
+            px += dx; py += dy;
+            const w = content.width, h = content.height;
+            if (px < monitor.x + MARGIN) px = monitor.x + MARGIN;
+            if (py < monitor.y + MARGIN) py = monitor.y + MARGIN;
+            if (px + w > monitor.x + monitor.width - MARGIN)
+                px = monitor.x + monitor.width - MARGIN - w;
+            if (py + h > monitor.y + monitor.height - MARGIN)
+                py = monitor.y + monitor.height - MARGIN - h;
+            content.set_position(px, py);
+            return Clutter.EVENT_STOP;
         };
+
+        const onRelease = () => {
+            overlay.disconnect(motionId);
+            overlay.disconnect(releaseId);
+            if (handleActor)
+                handleActor.remove_style_pseudo_class('dragging');
+            return Clutter.EVENT_PROPAGATE;
+        };
+
+        const motionId = overlay.connect('motion-event', onMotion);
+        const releaseId = overlay.connect('button-release-event', onRelease);
     }
 
     close() {

@@ -1,14 +1,9 @@
-// Clipboard history view — embedded inside popup.js.
+// Clipboard history tab content (the list of copied items).
 //
-// Layout (top to bottom), mirroring the Windows 11 Win+V flyout:
-//   [Title "Área de Transferência"]              [⚙ settings]
-//   [ Tudo ] [ Fixado ]                            <- segmented tabs
-//   [🔍 search entry]
-//   ┌──────────────────────────────────────────┐
-//   │ scrollable list of rows                   │
-//   │   each row: [preview / thumb] ts ⭐ 🗑      │
-//   └──────────────────────────────────────────┘
-//   [ Limpar tudo ]                                <- footer
+// This is embedded inside the unified window (winvView.js) which provides the
+// header / tab bar / search-or-not. Here we render: the scrollable list of rows
+// (preview + timestamp + pin + delete), the empty state, and the "clear all"
+// footer action.
 
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
@@ -61,7 +56,6 @@ const HistoryRow = GObject.registerClass({
             }));
         }
 
-        // Preview text (truncated)
         const preview = new St.Label({
             text: truncate(entry.getStringValue(), ROW_PREVIEW_CHARS),
             style_class: 'winv-row-preview',
@@ -72,17 +66,14 @@ const HistoryRow = GObject.registerClass({
         preview.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
         this.add_child(preview);
 
-        // Spacer pushes actions to the right
         this.add_child(new St.Widget({ x_expand: true }));
 
-        // Timestamp
         this.add_child(new St.Label({
             text: relativeTime(entry.getTimestamp()),
             style_class: 'winv-time',
             y_align: Clutter.ActorAlign.CENTER,
         }));
 
-        // Pin button
         const pinBtn = new St.Button({
             style_class: 'winv-action-btn',
             can_focus: true,
@@ -97,7 +88,6 @@ const HistoryRow = GObject.registerClass({
         pinBtn.connect('clicked', () => this.emit('toggle-pin', this.entry));
         this.add_child(pinBtn);
 
-        // Delete button
         const delBtn = new St.Button({
             style_class: 'winv-action-btn',
             can_focus: true,
@@ -113,7 +103,6 @@ const HistoryRow = GObject.registerClass({
         this.entry = entry;
         this._pinBtn = pinBtn;
 
-        // Enter / click selects
         this.connect('button-press-event', () => { this.emit('selected', this.entry); return Clutter.EVENT_STOP; });
         this.connect('key-press-event', (_a, event) => {
             if (event.get_key_symbol() === Clutter.KEY_Return ||
@@ -132,46 +121,29 @@ const HistoryRow = GObject.registerClass({
     }
 });
 
-// ---- The full view -----------------------------------------------------
+// ---- The clipboard tab content ----------------------------------------
 
 export class ClipboardView {
-    constructor({ manager, settings, registry, extension, onClosed }) {
+    constructor({ manager, settings, registry, extension, onClosed, onClearAll }) {
         this.manager = manager;
         this.settings = settings;
         this.registry = registry;
-        this.extension = extension; // to openPreferences()
+        this.extension = extension;
         this.onClosed = onClosed;
+        this.onClearAll = onClearAll;
 
         this._onlyFavorites = false;
-        this._query = '';
-        this._rows = new Map(); // entry -> HistoryRow
+        this._rows = new Map();
         this._dialogs = new DialogManager();
     }
 
+    // Called when the tab becomes active: refresh + focus search.
+    activate() { this._rebuildRows(); }
+
     build() {
-        const box = new St.BoxLayout({ vertical: true, style_class: 'winv-popup' });
+        const box = new St.BoxLayout({ vertical: true, reactive: true });
 
-        // ---- Header ----
-        const header = new St.BoxLayout({ style_class: 'winv-header' });
-        header.add_child(new St.Label({
-            text: 'Área de Transferência',
-            style_class: 'winv-title',
-            x_expand: true,
-            y_align: Clutter.ActorAlign.CENTER,
-        }));
-        const settingsBtn = new St.Button({
-            style_class: 'winv-header-btn',
-            can_focus: true,
-            child: new St.Icon({ icon_name: 'emblem-system-symbolic', icon_size: 16 }),
-        });
-        settingsBtn.connect('clicked', () => {
-            this.onClosed();
-            this.extension.openPreferences();
-        });
-        header.add_child(settingsBtn);
-        box.add_child(header);
-
-        // ---- Tabs ----
+        // Segmented control: Tudo | Fixado
         const tabs = new St.BoxLayout({ style_class: 'winv-tabs' });
         this._tabAll = this._makeTab('Tudo', false);
         this._tabFav = this._makeTab('Fixado', true);
@@ -179,22 +151,7 @@ export class ClipboardView {
         tabs.add_child(this._tabFav);
         box.add_child(tabs);
 
-        // ---- Search ----
-        this._search = new St.Entry({
-            style_class: 'winv-search search-entry',
-            can_focus: true,
-            hint_text: 'Pesquisar itens copiados…',
-            track_hover: true,
-            x_expand: true,
-        });
-        this._search.set_primary_icon(new St.Icon({ icon_name: 'edit-find-symbolic', icon_size: 16 }));
-        this._search.get_clutter_text().connect('text-changed', () => {
-            this._query = this._search.get_text();
-            this._applyFilter();
-        });
-        box.add_child(this._search);
-
-        // ---- Scroll list ----
+        // Scroll list
         this._scrollView = new St.ScrollView({
             style_class: 'winv-scroll',
             overlay_scrollbars: true,
@@ -205,10 +162,8 @@ export class ClipboardView {
         this._scrollView.add_child(this._list);
         box.add_child(this._scrollView);
 
-        // ---- Empty state (toggled) ----
-        this._empty = new St.BoxLayout({
-            vertical: true, style_class: 'winv-empty', visible: false,
-        });
+        // Empty state
+        this._empty = new St.BoxLayout({ vertical: true, style_class: 'winv-empty', visible: false });
         this._empty.add_child(new St.Label({
             text: 'Nada copiado ainda', style_class: 'winv-empty-title',
             x_align: Clutter.ActorAlign.CENTER,
@@ -219,14 +174,12 @@ export class ClipboardView {
         }));
         box.add_child(this._empty);
 
-        // ---- Footer ----
+        // Footer with "clear all"
         const footer = new St.BoxLayout({ style_class: 'winv-footer' });
         const clearBtn = new St.Button({
             label: 'Limpar tudo',
             style_class: 'winv-clear-all button',
             can_focus: true,
-            x_expand: true,
-            x_align: Clutter.ActorAlign.START,
         });
         clearBtn.connect('clicked', () => this._confirmClear());
         footer.add_child(clearBtn);
@@ -234,30 +187,28 @@ export class ClipboardView {
 
         this.actor = box;
         this._rebuildRows();
-        global.stage.set_key_focus(this._search);
-
         return box;
     }
 
     _makeTab(label, onlyFavorites) {
         const tab = new St.Button({
-            label,
-            style_class: 'winv-tab',
-            can_focus: true,
-            checked: !onlyFavorites,
+            label, style_class: 'winv-tab', can_focus: true, checked: !onlyFavorites,
         });
         tab.connect('clicked', () => {
             this._onlyFavorites = onlyFavorites;
             this._tabAll.checked = !onlyFavorites;
             this._tabFav.checked = onlyFavorites;
             this._applyFilter();
-            // keep keyboard focus on the search field for typing
-            global.stage.set_key_focus(this._search);
         });
         return tab;
     }
 
-    // Build a row for every entry currently in the manager (initial render).
+    // External filter hook (search box lives in the parent window).
+    setFilter(query) {
+        this._query = query || '';
+        this._applyFilter();
+    }
+
     _rebuildRows() {
         this._list.destroy_all_children();
         this._rows.clear();
@@ -272,7 +223,6 @@ export class ClipboardView {
     _createRow(entry) {
         let thumbActor = null;
         if (entry.isImage()) {
-            // Load the image from cache as a texture.
             try {
                 const file = GLib.file_new_for_path(this.registry.imageFilePath(entry));
                 const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
@@ -299,7 +249,7 @@ export class ClipboardView {
     }
 
     _applyFilter() {
-        const q = this._query.trim().toLowerCase();
+        const q = (this._query || '').trim().toLowerCase();
         let visible = 0;
         for (const [entry, row] of this._rows) {
             let match = true;
@@ -319,16 +269,15 @@ export class ClipboardView {
     }
 
     _onSelected(entry) {
-        // Copy back to clipboard (and optionally auto-paste after close).
-        const willPaste = this.settings.get_boolean('paste-on-select');
         this.manager.selectItem(entry)
             .then(() => {
                 this.onClosed();
-                if (willPaste)
+                if (this.settings.get_boolean('paste-on-select')) {
                     GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
                         this.extension.pasteIntoFocus();
                         return GLib.SOURCE_REMOVE;
                     });
+                }
             })
             .catch(e => console.error('WinV select:', e));
     }

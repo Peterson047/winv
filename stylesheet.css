@@ -35,7 +35,28 @@
     padding: 4px;
 }
 
-/* ===== Tabs row ("Tudo" / "Fixado") ===== */
+/* Close (✕) gets a touch more prominence, like Win11. */
+.winv-header-btn.window-close,
+.winv-header-btn:last-child {
+    margin-left: 2px;
+}
+
+/* The title is the drag handle: hint that it's movable. */
+.winv-drag-handle {
+    cursor: grab;
+}
+
+.winv-drag-handle:dragging {
+    cursor: grabbing;
+}
+
+/* ===== Tab bar (Clipboard | Emojis) ===== */
+.winv-tab-bar {
+    padding: 0 8px 6px 8px;
+    spacing: 4px;
+}
+
+/* ===== Inner tabs row ("Tudo" / "Fixado" within clipboard) ===== */
 .winv-tabs {
     padding: 2px 8px 6px 8px;
     spacing: 4px;
@@ -46,6 +67,13 @@
     padding: 5px 14px;
     font-weight: 600;
     transition-duration: 120ms;
+}
+
+/* Icon-style tabs (Clipboard | Emoji), Windows 11 look */
+.winv-tab-icon {
+    padding: 6px;
+    min-width: 32px;
+    min-height: 32px;
 }
 
 /* ===== Search entry =====
@@ -143,16 +171,28 @@
     padding-top: 8px;
 }
 
-/* ===== Emoji grid (Phase 2) ===== */
+/* ===== Emoji grid ===== */
+.winv-emoji-grid-wrapper {
+    padding: 4px;
+    max-height: 380px;
+}
+
 .winv-emoji-grid {
-    padding: 6px;
-    max-height: 360px;
+    padding: 4px 2px;
+    spacing: 2px;
+}
+
+.winv-emoji-group-title {
+    font-size: 9pt;
+    font-weight: 700;
+    opacity: 0.55;
+    padding: 8px 4px 4px 8px;
 }
 
 .winv-emoji-cell {
     border-radius: 8px;
-    min-width: 42px;
-    min-height: 42px;
+    min-width: 40px;
+    min-height: 40px;
     font-size: 20pt;
 }
 
@@ -170,5 +210,9 @@
     border-radius: 8px;
     min-width: 32px;
     min-height: 32px;
-    font-size: 14pt;
+    padding: 4px;
+}
+
+.winv-category-btn:checked {
+    background-color: rgba(128, 128, 128, 0.3);
 }

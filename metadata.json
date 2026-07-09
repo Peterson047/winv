@@ -1,10 +1,14 @@
 {
-    "uuid": "winv@petersonalves.dev",
+    "uuid": "winv@peterson047.github.io",
     "name": "WinV — Clipboard & Emoji (Windows-style)",
     "description": "Recria o clipboard inteligente do Windows 11 no GNOME: Win+V abre o histórico de itens copiados (texto e imagens), Win+. abre o seletor de emojis. Popups flutuantes abrem próximos ao cursor, com busca, fixar itens e limpar tudo. Acompanha o tema do shell (claro ou escuro).",
-    "shell-version": ["50"],
-    "session-modes": ["user"],
-    "url": "https://github.com/petersonalves/winv",
+    "shell-version": [
+        "50"
+    ],
+    "session-modes": [
+        "user"
+    ],
+    "url": "https://github.com/Peterson047/winv",
     "settings-schema": "org.gnome.shell.extensions.winv",
     "gettext-domain": "winv",
     "version": 1

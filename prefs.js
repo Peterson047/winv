@@ -17,35 +17,115 @@ export default class WinVPrefs extends ExtensionPreferences {
 
         const page = new Adw.PreferencesPage({ title: _('WinV'), icon_name: 'edit-paste-symbolic' });
 
-        // ---- Shortcuts group ----
-        const shortcuts = new Adw.PreferencesGroup({ title: _('Atalhos') });
+        this._buildShortcuts(page, settings);
+        this._buildBehaviour(page, settings);
+
+        window.add(page);
+    }
+
+    _buildShortcuts(page, settings) {
+        const group = new Adw.PreferencesGroup({ title: _('Atalhos') });
 
         const enableKeys = new Adw.SwitchRow({
             title: _('Ativar atalhos'),
             subtitle: _('Liga/desliga Win+V e Win+. globalmente'),
         });
-        shortcuts.add(enableKeys);
+        group.add(enableKeys);
 
-        const clipRow = new Adw.ActionRow({
-            title: _('Abrir histórico (Win+V)'),
-            subtitle: _('Clique e pressione o atalho desejado'),
+        const clipRow = this._makeShortcutRow(
+            _('Abrir histórico (Win+V)'),
+            _('Clique e pressione o atalho desejado'),
+        );
+        const clipBtn = this._makeShortcutButton(settings, Prefs.CLIPBOARD_KEYBINDING, clipRow);
+        clipRow.add_suffix(clipBtn);
+        group.add(clipRow);
+
+        const emojiRow = this._makeShortcutRow(
+            _('Abrir emojis (Win+.)'),
+            _('Clique e pressione o atalho desejado'),
+        );
+        const emojiBtn = this._makeShortcutButton(settings, Prefs.EMOJI_KEYBINDING, emojiRow);
+        emojiRow.add_suffix(emojiBtn);
+        group.add(emojiRow);
+
+        page.add(group);
+
+        settings.bind(Prefs.ENABLE_KEYBINDINGS, enableKeys, 'active', Gio.SettingsBindFlags.DEFAULT);
+    }
+
+    _makeShortcutRow(title, subtitle) {
+        return new Adw.ActionRow({ title, subtitle });
+    }
+
+    // Manual key capture so the user can press Super+V (a plain accelerator
+    // label can't capture a chord). Robust against modifiers-only presses.
+    _makeShortcutButton(settings, prefKey, row) {
+        const button = new Gtk.Button({ has_frame: false, valign: Gtk.Align.CENTER });
+
+        const refresh = () => {
+            const val = settings.get_strv(prefKey)[0];
+            if (val) {
+                // Pretty-print: <Super>v -> "Super+V"
+                const pretty = val
+                    .replace(/</g, '')
+                    .replace(/>/g, '')
+                    .split(/(?=[A-Z])/) // crude, but readable
+                    .join('+');
+                button.set_label(pretty);
+            } else {
+                button.set_label(_('Desativado'));
+            }
+        };
+        refresh();
+
+        settings.connect(`changed::${prefKey}`, refresh);
+
+        button.connect('clicked', () => {
+            button.set_label(_('Pressione o atalho…'));
+            const ec = new Gtk.EventControllerKey({
+                propagation_phase: Gtk.PropagationPhase.CAPTURE,
+            });
+            button.add_controller(ec);
+
+            const finish = (restoreCursor = true) => {
+                ec.disconnect(id);
+                button.remove_controller(ec);
+                if (restoreCursor) refresh();
+            };
+
+            const id = ec.connect('key-pressed', (_ec, keyval, keycode, mask) => {
+                // Strip Caps/NumLock noise.
+                const mods = mask & Gtk.accelerator_get_default_mod_mask();
+
+                // Escape cancels, BackSpace clears.
+                if (mods === 0) {
+                    if (keyval === Gdk.KEY_Escape) { finish(true); return Gdk.EVENT_STOP; }
+                    if (keyval === Gdk.KEY_BackSpace) {
+                        settings.set_strv(prefKey, []);
+                        finish(true);
+                        return Gdk.EVENT_STOP;
+                    }
+                }
+
+                // Require a real key (not modifiers alone): a valid accelerator
+                // needs a non-modifier keyval. Gtk.accelerator_valid checks that.
+                const accel = Gtk.accelerator_name_with_keycode(null, keyval, keycode, mods);
+                if (accel && Gtk.accelerator_valid(keyval, mods)) {
+                    settings.set_strv(prefKey, [accel]);
+                    finish(true);
+                    return Gdk.EVENT_STOP;
+                }
+
+                // Otherwise it's a modifier alone — keep listening.
+                button.set_label(_('Pressione o atalho…'));
+                return Gdk.EVENT_STOP;
+            });
         });
-        clipRow.add_suffix(this._makeShortcutButton(settings, Prefs.CLIPBOARD_KEYBINDING));
-        clipRow.set_activatable_widget(clipRow.get_suffix());
-        shortcuts.add(clipRow);
+        return button;
+    }
 
-        const emojiRow = new Adw.ActionRow({
-            title: _('Abrir emojis (Win+.)'),
-            subtitle: _('Seletor de emojis — fase 2'),
-        });
-        emojiRow.add_suffix(this._makeShortcutButton(settings, Prefs.EMOJI_KEYBINDING));
-        emojiRow.set_activatable_widget(emojiRow.get_suffix());
-        shortcuts.add(emojiRow);
-
-        page.add(shortcuts);
-
-        // ---- Behaviour group ----
-        const behaviour = new Adw.PreferencesGroup({ title: _('Comportamento') });
+    _buildBehaviour(page, settings) {
+        const group = new Adw.PreferencesGroup({ title: _('Comportamento') });
 
         const historySize = new Adw.SpinRow({
             title: _('Tamanho do histórico'),
@@ -54,88 +134,25 @@ export default class WinVPrefs extends ExtensionPreferences {
                 lower: 5, upper: 500, step_increment: 5, page_increment: 25, value: 50,
             }),
         });
-        behaviour.add(historySize);
+        group.add(historySize);
 
-        behaviour.add(new Adw.SwitchRow({
-            title: _('Guardar imagens'),
-            subtitle: _('Inclui screenshots e imagens copiadas'),
-        }));
-
-        behaviour.add(new Adw.SwitchRow({
-            title: _('Colar automaticamente'),
-            subtitle: _('Simula Ctrl+V no app focado ao selecionar um item'),
-        }));
-
-        behaviour.add(new Adw.SwitchRow({
-            title: _('Mover reusado para o topo'),
-        }));
-
-        behaviour.add(new Adw.SwitchRow({
-            title: _('Confirmar ao limpar tudo'),
-        }));
-
-        behaviour.add(new Adw.SwitchRow({
-            title: _('Remover espaços do texto copiado'),
-        }));
-
-        behaviour.add(new Adw.SwitchRow({
-            title: _('Abrir popup no cursor'),
-            subtitle: _('Desligue para abrir centralizado'),
-        }));
-
-        page.add(behaviour);
-
-        window.add(page);
-
-        // ---- Bind rows to settings ----
-        settings.bind(Prefs.ENABLE_KEYBINDINGS, enableKeys, 'active', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind(Prefs.HISTORY_SIZE,       historySize, 'value', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind(Prefs.CACHE_IMAGES,       behaviour.get_rows().get_item(1), 'active', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind(Prefs.PASTE_ON_SELECT,    behaviour.get_rows().get_item(2), 'active', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind(Prefs.MOVE_ITEM_FIRST,    behaviour.get_rows().get_item(3), 'active', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind(Prefs.CONFIRM_CLEAR,      behaviour.get_rows().get_item(4), 'active', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind(Prefs.STRIP_TEXT,         behaviour.get_rows().get_item(5), 'active', Gio.SettingsBindFlags.DEFAULT);
-        settings.bind(Prefs.OPEN_AT_CURSOR,     behaviour.get_rows().get_item(6), 'active', Gio.SettingsBindFlags.DEFAULT);
-    }
-
-    // Manual key capture so the user can press Super+V (a plain accelerator
-    // label can't capture a chord). Pattern verified against Clipboard Indicator.
-    _makeShortcutButton(settings, prefKey) {
-        const button = new Gtk.Button({ has_frame: false });
-
-        const refresh = () => {
-            const val = settings.get_strv(prefKey)[0];
-            button.set_label(val ?? _('Desativado'));
+        const rows = {};
+        const addSwitch = (key, title, subtitle = null) => {
+            const row = new Adw.SwitchRow({ title, subtitle });
+            settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
+            group.add(row);
+            rows[key] = row;
         };
-        refresh();
 
-        button.connect('clicked', () => {
-            button.set_label(_('Pressione o atalho…'));
-            const ec = new Gtk.EventControllerKey();
-            button.add_controller(ec);
+        addSwitch(Prefs.CACHE_IMAGES,    _('Guardar imagens'), _('Inclui screenshots e imagens copiadas'));
+        addSwitch(Prefs.PASTE_ON_SELECT, _('Colar automaticamente'), _('Simula Ctrl+V no app focado ao selecionar um item'));
+        addSwitch(Prefs.MOVE_ITEM_FIRST, _('Mover reusado para o topo'));
+        addSwitch(Prefs.CONFIRM_CLEAR,   _('Confirmar ao limpar tudo'));
+        addSwitch(Prefs.STRIP_TEXT,      _('Remover espaços do texto copiado'));
+        addSwitch(Prefs.OPEN_AT_CURSOR,  _('Abrir popup no cursor'), _('Desligue para abrir centralizado'));
 
-            let debounce = null;
-            const id = ec.connect('key-pressed', (_ec, keyval, keycode, mask) => {
-                if (debounce) clearTimeout(debounce);
-                mask = mask & Gtk.accelerator_get_default_mod_mask();
+        settings.bind(Prefs.HISTORY_SIZE, historySize, 'value', Gio.SettingsBindFlags.DEFAULT);
 
-                if (mask === 0) {
-                    if (keyval === Gdk.KEY_Escape) { refresh(); ec.disconnect(id); return Gdk.EVENT_STOP; }
-                    if (keyval === Gdk.KEY_BackSpace) {
-                        settings.set_strv(prefKey, []);
-                        refresh(); ec.disconnect(id);
-                        return Gdk.EVENT_STOP;
-                    }
-                }
-                const accel = Gtk.accelerator_name_with_keycode(null, keyval, keycode, mask);
-                debounce = setTimeout(() => {
-                    ec.disconnect(id);
-                    settings.set_strv(prefKey, [accel]);
-                    refresh();
-                }, 400);
-                return Gdk.EVENT_STOP;
-            });
-        });
-        return button;
+        page.add(group);
     }
 }
