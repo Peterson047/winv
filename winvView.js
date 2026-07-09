@@ -137,6 +137,7 @@ export class WinvView {
                 settings: this.settings,
                 onClosed: this.onClosed,
                 makeDraggable: (a) => this._makeDraggable(a),
+                searchEntry: this._search,
             });
             this._emojiView._all = this._emojiData;
             const content = this._emojiView.build();

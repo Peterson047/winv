@@ -1,17 +1,11 @@
-// Emoji picker view — embedded in the same popup as the clipboard view.
-//
-// Loads emoji.json (bundled with the extension: char + keywords + category),
-// shows a search entry, a category selector bar, and a scrollable grid.
-// Clicking an emoji copies it to the clipboard and (if enabled) pastes it
-// into the previously focused app via the synthetic keyboard.
+// Emoji picker tab content — embedded in the unified window (winvView.js),
+// which provides the shared search entry. This view renders the category bar
+// and the scrollable emoji grid only.
 
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GObject from 'gi://GObject';
-import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
 
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { EMOJI_GRID_COLUMNS } from './constants.js';
 
 // Category icons (symbolic names available on GNOME 50).
@@ -43,54 +37,22 @@ const EmojiCell = GObject.registerClass({
 });
 
 export class EmojiView {
-    constructor({ extension, settings, onClosed, makeDraggable }) {
+    constructor({ extension, settings, onClosed, makeDraggable, searchEntry }) {
         this.extension = extension;
         this.settings = settings;
         this.onClosed = onClosed;
         this.makeDraggable = makeDraggable;
+        this.searchEntry = searchEntry; // shared with the parent window
 
         this._all = [];
         this._query = '';
         this._category = null; // null = all / search results
     }
 
-    async load() {
-        if (this._all.length) return;
-        try {
-            const path = `${this.extension.path}/emoji.json`;
-            const file = Gio.file_new_for_path(path);
-            const [ok, bytes] = await new Promise(resolve =>
-                file.load_contents_async(null, (obj, res) =>
-                    resolve(obj.load_contents_finish(res))));
-            if (!ok) { console.error('WinV: emoji.json read failed'); return; }
-            const text = new TextDecoder().decode(bytes);
-            this._all = JSON.parse(text);
-        } catch (e) {
-            console.error('WinV: emoji.json load error:', e);
-        }
-    }
-
     build() {
         const box = new St.BoxLayout({ vertical: true, reactive: true });
 
-        // Search entry (also a drag handle).
-        this._search = new St.Entry({
-            style_class: 'winv-search search-entry winv-drag-handle',
-            can_focus: true,
-            hint_text: 'Pesquisar emoji…',
-            track_hover: true,
-            x_expand: true,
-            reactive: true,
-        });
-        this._search.set_primary_icon(new St.Icon({ icon_name: 'edit-find-symbolic', icon_size: 16 }));
-        this._search.get_clutter_text().connect('text-changed', () => {
-            this._query = this._search.get_text();
-            this._populate();
-        });
-        if (this.makeDraggable) this.makeDraggable(this._search);
-        box.add_child(this._search);
-
-        // Category bar.
+        // Category bar (also a drag handle).
         const catBar = new St.BoxLayout({
             style_class: 'winv-category-bar winv-drag-handle',
             reactive: true,
@@ -114,21 +76,17 @@ export class EmojiView {
         this.actor = box;
         this._populate();
 
-        // Focus search so the user can type right away.
-        global.stage.set_key_focus(this._search);
-
         return box;
     }
 
     _buildCategoryBar() {
-        // "All" button
         const allBtn = this._makeCategoryButton(null, 'edit-find-symbolic');
         allBtn.checked = true;
         this._catBar.add_child(allBtn);
         this._catAll = allBtn;
 
-        const cats = [...new Set(this._all.map(e => e.category))];
         this._catButtons = {};
+        const cats = [...new Set(this._all.map(e => e.category))];
         for (const cat of cats) {
             const iconName = CATEGORY_ICONS[cat] || 'emoji-symbols-symbolic';
             const btn = this._makeCategoryButton(cat, iconName);
@@ -146,10 +104,11 @@ export class EmojiView {
         });
         btn.connect('clicked', () => {
             this._category = category;
-            // Sync toggle state
             this._catAll.checked = (category === null);
-            for (const [c, b] of Object.entries(this._catButtons)) b.checked = (c === category);
-            this._search.set_text('');
+            for (const [c, b] of Object.entries(this._catButtons))
+                b.checked = (c === category);
+            // Clear the shared search so the category filter takes effect.
+            if (this.searchEntry) this.searchEntry.set_text('');
             this._query = '';
             this._populate();
         });
@@ -159,7 +118,6 @@ export class EmojiView {
     _visibleEmojis() {
         const q = this._query.trim().toLowerCase();
         if (q) {
-            // Search across all categories when there's a query.
             return this._all.filter(e =>
                 e.keywords.some(k => k.toLowerCase().includes(q)));
         }
@@ -214,9 +172,9 @@ export class EmojiView {
     }
 
     _onSelected(emoji) {
-        // Copy emoji to clipboard and auto-paste (Win11 behavior).
-        this.extension.copyAndPaste(emoji.char)
-            .then(() => this.onClosed())
+        // closePopup is invoked inside copyAndPaste BEFORE the synthetic paste,
+        // so the modal grab is released and focus returns to the target app.
+        this.extension.copyAndPaste(emoji.char, () => this.onClosed())
             .catch(e => console.error('WinV emoji select:', e));
     }
 

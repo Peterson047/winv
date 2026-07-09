@@ -102,11 +102,29 @@ const HistoryRow = GObject.registerClass({
 
         this.entry = entry;
         this._pinBtn = pinBtn;
+        this._delBtn = delBtn;
 
-        this.connect('button-press-event', () => { this.emit('selected', this.entry); return Clutter.EVENT_STOP; });
+        // Clicking the row body selects it — but clicks on the pin/delete
+        // buttons must NOT trigger selection (they handle their own action).
+        // get_source()/key_focus can be null; guard against that.
+        const isActionButton = (actor) => {
+            if (!actor) return false;
+            return actor === pinBtn || pinBtn.contains(actor) ||
+                   actor === delBtn || delBtn.contains(actor);
+        };
+
+        this.connect('button-press-event', (_actor, event) => {
+            if (isActionButton(event.get_source()))
+                return Clutter.EVENT_PROPAGATE;
+            this.emit('selected', this.entry);
+            return Clutter.EVENT_STOP;
+        });
         this.connect('key-press-event', (_a, event) => {
             if (event.get_key_symbol() === Clutter.KEY_Return ||
                 event.get_key_symbol() === Clutter.KEY_KP_Enter) {
+                const focus = global.stage.key_focus;
+                if (focus && isActionButton(focus))
+                    return Clutter.EVENT_PROPAGATE;
                 this.emit('selected', this.entry);
                 return Clutter.EVENT_STOP;
             }
@@ -143,13 +161,24 @@ export class ClipboardView {
     build() {
         const box = new St.BoxLayout({ vertical: true, reactive: true });
 
-        // Segmented control: Tudo | Fixado
-        const tabs = new St.BoxLayout({ style_class: 'winv-tabs' });
+        // Control bar: "Tudo | Fixado" on the left, "Limpar tudo" on the right.
+        // Collapsing the footer into this row saves vertical space.
+        const controlBar = new St.BoxLayout({ style_class: 'winv-tabs' });
         this._tabAll = this._makeTab('Tudo', false);
         this._tabFav = this._makeTab('Fixado', true);
-        tabs.add_child(this._tabAll);
-        tabs.add_child(this._tabFav);
-        box.add_child(tabs);
+        controlBar.add_child(this._tabAll);
+        controlBar.add_child(this._tabFav);
+        // Expander pushes the clear button to the far right.
+        controlBar.add_child(new St.Widget({ x_expand: true }));
+        const clearBtn = new St.Button({
+            label: 'Limpar tudo',
+            style_class: 'winv-clear-all button',
+            can_focus: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        clearBtn.connect('clicked', () => this._confirmClear());
+        controlBar.add_child(clearBtn);
+        box.add_child(controlBar);
 
         // Scroll list
         this._scrollView = new St.ScrollView({
@@ -173,17 +202,6 @@ export class ClipboardView {
             x_align: Clutter.ActorAlign.CENTER,
         }));
         box.add_child(this._empty);
-
-        // Footer with "clear all"
-        const footer = new St.BoxLayout({ style_class: 'winv-footer' });
-        const clearBtn = new St.Button({
-            label: 'Limpar tudo',
-            style_class: 'winv-clear-all button',
-            can_focus: true,
-        });
-        clearBtn.connect('clicked', () => this._confirmClear());
-        footer.add_child(clearBtn);
-        box.add_child(footer);
 
         this.actor = box;
         this._rebuildRows();
@@ -271,9 +289,11 @@ export class ClipboardView {
     _onSelected(entry) {
         this.manager.selectItem(entry)
             .then(() => {
+                // Close FIRST so the modal grab is released and focus returns
+                // to the target app before we synthesize Ctrl+V.
                 this.onClosed();
                 if (this.settings.get_boolean('paste-on-select')) {
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
                         this.extension.pasteIntoFocus();
                         return GLib.SOURCE_REMOVE;
                     });

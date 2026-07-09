@@ -32,7 +32,14 @@ export class Keyboard {
     get ready() { return this.#ready; }
 
     #notify(keyval, state) {
-        this.#device.notify_keyval(Clutter.get_current_event_time(), keyval, state);
+        // notify_keyval expects microseconds; get_current_event_time() returns
+        // milliseconds, so multiply by 1000 (matches the working pattern in
+        // clipboard-indicator). When called from a GLib timeout (outside any
+        // Clutter event) this returns the current time, not 0.
+        this.#device.notify_keyval(
+            Clutter.get_current_event_time() * 1000,
+            keyval,
+            state);
     }
 
     press(keyval) { this.#notify(keyval, Clutter.KeyState.PRESSED); }

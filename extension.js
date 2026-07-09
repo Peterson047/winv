@@ -139,12 +139,16 @@ export default class WinVExtension extends Extension {
     // ---- helpers used by views -------------------------------------------
 
     // Copy text to the clipboard and (if enabled) auto-paste into focus.
-    async copyAndPaste(text) {
+    // `closePopup` is called FIRST so the modal grab is released and keyboard
+    // focus returns to the target app before we synthesize Ctrl+V.
+    async copyAndPaste(text, closePopup) {
         const clipboard = St.Clipboard.get_default();
         clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+        if (closePopup) closePopup();
         if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
-            // Paste after a short delay so focus returns to the target app.
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+            // Give the shell time to pop the modal grab and restore focus to
+            // the target app before we emit the synthetic Ctrl+V.
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
                 this.pasteIntoFocus();
                 return GLib.SOURCE_REMOVE;
             });

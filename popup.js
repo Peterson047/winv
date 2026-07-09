@@ -27,49 +27,58 @@ const WinVOverlay = GObject.registerClass({
     },
 }, class WinVOverlay extends St.Widget {
     _init() {
-        const monitor = Main.layoutManager.currentMonitor;
+        // Cover the ENTIRE stage (all monitors), not just one. A click on any
+        // secondary monitor must still hit the overlay so click-outside works
+        // and drag-release is never lost. We then pick the monitor the pointer
+        // is actually on for positioning/clamping.
         super._init({
             reactive: true,
             can_focus: true,
-            x: monitor.x, y: monitor.y,
-            width: monitor.width, height: monitor.height,
+            x: 0, y: 0,
+            width: global.stage.width, height: global.stage.height,
         });
-        this._monitor = monitor;
+        this._monitor = this._monitorAtPointer();
     }
 
-    // Place the content box near the pointer, clamped to the monitor.
+    _monitorAtPointer() {
+        const [px, py] = global.get_pointer();
+        return Main.layoutManager.monitors.find(m =>
+            px >= m.x && px < m.x + m.width &&
+            py >= m.y && py < m.y + m.height)
+            || Main.layoutManager.currentMonitor;
+    }
+
+    // Place the content box near the pointer, clamped to its monitor.
     positionContent(content) {
         this.add_child(content);
         this._content = content;
+        this._monitor = this._monitorAtPointer();
+        const monitor = this._monitor;
 
         const w = POPUP_WIDTH;
         content.set_width(w);
 
         // Cap the popup height so long lists (emoji grid, big history) scroll
         // inside a St.ScrollView instead of growing to fill the whole screen.
-        const maxHeight = Math.min(
-            POPUP_MAX_HEIGHT,
-            this._monitor.height - 2 * MARGIN,
-        );
-        // Setting height directly forces the inner ScrollView to activate.
+        const maxHeight = Math.min(POPUP_MAX_HEIGHT, monitor.height - 2 * MARGIN);
         const [, natHeight] = content.get_preferred_height(w);
         const h = Math.min(natHeight, maxHeight);
         content.set_height(h);
 
         let [px, py] = global.get_pointer();
-        px -= this._monitor.x;
-        py -= this._monitor.y;
+        px -= monitor.x;
+        py -= monitor.y;
 
         let x = px;
         let y = py;
-        if (x + w > this._monitor.width - MARGIN)
-            x = this._monitor.width - MARGIN - w;
-        if (y + h > this._monitor.height - MARGIN)
-            y = Math.max(MARGIN, this._monitor.height - MARGIN - h);
+        if (x + w > monitor.width - MARGIN)
+            x = monitor.width - MARGIN - w;
+        if (y + h > monitor.height - MARGIN)
+            y = Math.max(MARGIN, monitor.height - MARGIN - h);
         if (x < MARGIN) x = MARGIN;
         if (y < MARGIN) y = MARGIN;
 
-        content.set_position(this._monitor.x + x, this._monitor.y + y);
+        content.set_position(monitor.x + x, monitor.y + y);
     }
 
     vfunc_button_press_event(event) {
@@ -158,63 +167,89 @@ export class Popup {
 
     setOnClose(cb) { this._onClose = cb; }
 
-    // Begin a drag operation. Motion/release are tracked on the overlay (which
-    // is the modal-grab actor and therefore receives captured pointer events).
-    // `handleActor` is the title label — used only to restore its cursor.
+    // Begin a drag. Motion and release are captured on the global stage, which
+    // cannot be blocked by child widgets (a child returning EVENT_STOP on
+    // button-release would otherwise leave the popup stuck in drag mode).
     beginDrag(handleActor, startX, startY) {
         if (!this._overlay) return;
+        // Cancel any in-flight drag first (shouldn't happen, but be safe).
+        if (this._dragCapturedId) {
+            global.stage.disconnect(this._dragCapturedId);
+            this._dragCapturedId = null;
+        }
+
         const content = this._overlay._content;
         const monitor = this._overlay._monitor;
-        const overlay = this._overlay;
         let lastX = startX, lastY = startY;
 
-        const onMotion = (_o, event) => {
-            const [x, y] = event.get_coords();
-            const dx = x - lastX, dy = y - lastY;
-            if (dx === 0 && dy === 0) return Clutter.EVENT_PROPAGATE;
-            lastX = x; lastY = y;
+        this._dragCapturedId = global.stage.connect('captured-event', (_stage, event) => {
+            const type = event.type();
+            if (type === Clutter.EventType.MOTION) {
+                const [x, y] = event.get_coords();
+                const dx = x - lastX, dy = y - lastY;
+                if (dx === 0 && dy === 0) return Clutter.EVENT_PROPAGATE;
+                lastX = x; lastY = y;
 
-            let [px, py] = content.get_position();
-            px += dx; py += dy;
-            const w = content.width, h = content.height;
-            if (px < monitor.x + MARGIN) px = monitor.x + MARGIN;
-            if (py < monitor.y + MARGIN) py = monitor.y + MARGIN;
-            if (px + w > monitor.x + monitor.width - MARGIN)
-                px = monitor.x + monitor.width - MARGIN - w;
-            if (py + h > monitor.y + monitor.height - MARGIN)
-                py = monitor.y + monitor.height - MARGIN - h;
-            content.set_position(px, py);
-            return Clutter.EVENT_STOP;
-        };
-
-        const onRelease = () => {
-            overlay.disconnect(motionId);
-            overlay.disconnect(releaseId);
-            if (handleActor)
-                handleActor.remove_style_pseudo_class('dragging');
+                let [px, py] = content.get_position();
+                px += dx; py += dy;
+                const w = content.width, h = content.height;
+                if (px < monitor.x + MARGIN) px = monitor.x + MARGIN;
+                if (py < monitor.y + MARGIN) py = monitor.y + MARGIN;
+                if (px + w > monitor.x + monitor.width - MARGIN)
+                    px = monitor.x + monitor.width - MARGIN - w;
+                if (py + h > monitor.y + monitor.height - MARGIN)
+                    py = monitor.y + monitor.height - MARGIN - h;
+                content.set_position(px, py);
+                return Clutter.EVENT_STOP;
+            }
+            if (type === Clutter.EventType.BUTTON_RELEASE) {
+                if (this._dragCapturedId) {
+                    global.stage.disconnect(this._dragCapturedId);
+                    this._dragCapturedId = null;
+                }
+                handleActor?.remove_style_pseudo_class('dragging');
+                return Clutter.EVENT_STOP;
+            }
             return Clutter.EVENT_PROPAGATE;
-        };
-
-        const motionId = overlay.connect('motion-event', onMotion);
-        const releaseId = overlay.connect('button-release-event', onRelease);
+        });
     }
 
     close() {
         if (!this._overlay) return;
-        try {
-            if (this._onClose) this._onClose();
-        } finally {
-            // destroying the overlay triggers _cleanup via the 'destroy' signal
-            this._overlay.destroy();
-        }
+        if (this._onClose) this._onClose();
+        // Pop the modal grab BEFORE destroying the overlay. pushModal installs
+        // its own destroy-handler that also pops; if we destroy first, both
+        // paths pop and the second throws "incorrect pop", leaving the grab
+        // inconsistent (the focused app then can't receive input).
+        this._popModal();
+        // Disconnect our own destroy/close handlers so _cleanup doesn't run
+        // and double-pop when destroy() fires.
+        this._overlay.disconnect(this._destroyId);
+        this._overlay.disconnect(this._closeId);
+        this._destroyId = null;
+        this._closeId = null;
+        this._overlay.destroy();
+        this._overlay = null;
     }
 
-    _cleanup() {
-        if (this._grab) {
-            try { Main.popModal(this._grab); }
-            catch (e) { console.error('WinV: popModal failed:', e); }
+    _popModal() {
+        if (!this._grab) return;
+        try {
+            Main.popModal(this._grab);
+        } catch (e) {
+            console.warn('WinV: popModal skipped:', e.message);
         }
         this._grab = null;
+    }
+
+    // Runs only when the overlay is destroyed out from under us (screen lock,
+    // shell teardown) — NOT from our own close(), which disconnects first.
+    _cleanup() {
+        if (this._dragCapturedId) {
+            global.stage.disconnect(this._dragCapturedId);
+            this._dragCapturedId = null;
+        }
+        this._popModal();
         if (this._overlay && this._overlay.get_parent())
             this._overlay.get_parent().remove_child(this._overlay);
         this._overlay = null;

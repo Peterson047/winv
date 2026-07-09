@@ -192,13 +192,13 @@ winv@peterson047.github.io/
 All shortcuts are customizable in Preferences.
 
 ---
-
+e
 ## Debugging
 
 ```bash
 # Watch the gnome-shell journal for WinV output
 journalctl -f /usr/bin/gnome-shell | grep winv
-
+ea
 # Open Looking Glass (live JS inspector + error log)
 # Alt+F2 → type "lg" → Enter
 ```
