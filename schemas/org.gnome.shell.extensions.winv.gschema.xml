@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="winv">
+  <schema id="org.gnome.shell.extensions.winv"
+          path="/org/gnome/shell/extensions/winv/">
+
+    <!-- Keybindings -->
+    <key name="enable-keybindings" type="b">
+      <default>true</default>
+      <summary>Enable keyboard shortcuts</summary>
+    </key>
+
+    <key name="clipboard-keybinding" type="as">
+      <default><![CDATA[['<Super>v']]]></default>
+      <summary>Open the clipboard history popup</summary>
+    </key>
+
+    <key name="emoji-keybinding" type="as">
+      <default><![CDATA[['<Super>period']]]></default>
+      <summary>Open the emoji picker</summary>
+    </key>
+
+    <!-- Behaviour -->
+    <key name="history-size" type="i">
+      <default>50</default>
+      <summary>Maximum number of items kept in history</summary>
+    </key>
+
+    <key name="cache-images" type="b">
+      <default>true</default>
+      <summary>Store copied images in the history</summary>
+    </key>
+
+    <key name="paste-on-select" type="b">
+      <default>true</default>
+      <summary>Automatically paste the selected item (Ctrl+V) into the focused app</summary>
+    </key>
+
+    <key name="move-item-first" type="b">
+      <default>true</default>
+      <summary>Move a reused item to the top of the history</summary>
+    </key>
+
+    <key name="confirm-clear" type="b">
+      <default>true</default>
+      <summary>Ask for confirmation before clearing the history</summary>
+    </key>
+
+    <key name="strip-text" type="b">
+      <default>true</default>
+      <summary>Trim whitespace from copied text</summary>
+    </key>
+
+    <key name="open-at-cursor" type="b">
+      <default>true</default>
+      <summary>Open the popup at the mouse cursor (Windows-style)</summary>
+    </key>
+
+  </schema>
+</schemalist>

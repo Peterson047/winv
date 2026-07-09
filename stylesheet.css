@@ -1,0 +1,174 @@
+/*
+ * WinV stylesheet.
+ *
+ * Theme-adaptive by design: we layer ON TOP of St's built-in theme classes
+ * (.popup-menu-content, .popup-menu-item, .search-entry, .popup-menu-icon).
+ * Those already adapt to the active shell theme (light/dark), so we avoid
+ * hard-coded colors here and only tune spacing/rounding/sizes.
+ */
+
+/* ===== Floating popup container (Windows 11 look) =====
+ * The outer actor is a vertical St.BoxLayout added directly to global.stage.
+ * We give it a menu-like surface via the shell's own .popup-menu-content class
+ * and tweak the corner radius / shadow to look like the Win11 flyout.
+ */
+.winv-popup {
+    border-radius: 12px;
+    padding: 6px;
+}
+
+/* ===== Header: title + settings button ===== */
+.winv-header {
+    padding: 6px 10px;
+    spacing: 8px;
+}
+
+.winv-title {
+    font-weight: 700;
+    font-size: 11pt;
+}
+
+.winv-header-btn {
+    border-radius: 8px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 4px;
+}
+
+/* ===== Tabs row ("Tudo" / "Fixado") ===== */
+.winv-tabs {
+    padding: 2px 8px 6px 8px;
+    spacing: 4px;
+}
+
+.winv-tab {
+    border-radius: 999px;
+    padding: 5px 14px;
+    font-weight: 600;
+    transition-duration: 120ms;
+}
+
+/* ===== Search entry =====
+ * We reuse the shell's .search-entry class for the look; just tighten margins.
+ */
+.winv-search {
+    margin: 4px 8px 6px 8px;
+}
+
+/* ===== History list / scroll area ===== */
+.winv-scroll {
+    padding: 0 2px;
+}
+
+.winv-history-section {
+    /* max-height is what actually turns this into a scrolling region */
+    max-height: 460px;
+}
+
+.winv-row {
+    padding: 8px 10px;
+    border-radius: 8px;
+    spacing: 8px;
+}
+
+.winv-row-preview {
+    /* two-line clamp-ish look */
+    max-width: 250px;
+}
+
+.winv-row-preview-multiline {
+    /* for multi-line text, allow up to 2 lines */
+    max-width: 250px;
+}
+
+.winv-meta {
+    spacing: 6px;
+}
+
+.winv-time {
+    font-size: 9pt;
+    opacity: 0.65;
+}
+
+.winv-action-btn {
+    border-radius: 6px;
+    min-width: 22px;
+    min-height: 22px;
+    padding: 3px;
+    opacity: 0.7;
+    transition-duration: 100ms;
+}
+
+.winv-action-btn:hover,
+.winv-action-btn:focus {
+    opacity: 1.0;
+}
+
+.winv-action-btn:checked {
+    opacity: 1.0;
+}
+
+.winv-thumb {
+    border-radius: 6px;
+    min-width: 40px;
+    min-height: 40px;
+}
+
+/* ===== Footer ===== */
+.winv-footer {
+    padding: 6px 8px 2px 8px;
+    spacing: 8px;
+}
+
+.winv-clear-all {
+    border-radius: 8px;
+    padding: 6px 12px;
+}
+
+/* ===== Empty state ===== */
+.winv-empty {
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.winv-empty-title {
+    font-size: 13pt;
+    font-weight: 700;
+    opacity: 0.85;
+}
+
+.winv-empty-hint {
+    font-size: 10pt;
+    opacity: 0.55;
+    padding-top: 8px;
+}
+
+/* ===== Emoji grid (Phase 2) ===== */
+.winv-emoji-grid {
+    padding: 6px;
+    max-height: 360px;
+}
+
+.winv-emoji-cell {
+    border-radius: 8px;
+    min-width: 42px;
+    min-height: 42px;
+    font-size: 20pt;
+}
+
+.winv-emoji-cell:hover,
+.winv-emoji-cell:focus {
+    background-color: rgba(128, 128, 128, 0.25);
+}
+
+.winv-category-bar {
+    padding: 4px 8px;
+    spacing: 2px;
+}
+
+.winv-category-btn {
+    border-radius: 8px;
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 14pt;
+}
