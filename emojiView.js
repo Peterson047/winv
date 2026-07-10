@@ -52,6 +52,13 @@ export class EmojiView {
     build() {
         const box = new St.BoxLayout({ vertical: true, reactive: true, y_expand: true });
 
+        // Recent emojis row (top, like Windows 11). Hidden until there are any.
+        this._recentRow = new St.BoxLayout({
+            style_class: 'winv-recent-row',
+            visible: false,
+        });
+        box.add_child(this._recentRow);
+
         // Category bar (also a drag handle).
         const catBar = new St.BoxLayout({
             style_class: 'winv-category-bar winv-drag-handle',
@@ -81,6 +88,7 @@ export class EmojiView {
 
         this.actor = box;
         this._populate();
+        this._refreshRecent();
 
         return box;
     }
@@ -180,10 +188,31 @@ export class EmojiView {
     }
 
     _onSelected(emoji) {
-        // closePopup is invoked inside copyAndPaste BEFORE the synthetic paste,
-        // so the modal grab is released and focus returns to the target app.
-        this.extension.copyAndPaste(emoji.char, () => this.onClosed())
-            .catch(e => console.error('WinV emoji select:', e));
+        // Windows 11 behavior: clicking an emoji inserts it into the focused app
+        // but KEEPS the picker open so the user can pick more. We copy the emoji
+        // to the clipboard and fire a synthetic Ctrl+V without closing the menu.
+        // The virtual keyboard event is emitted at the stage level, so it reaches
+        // the previously focused app even while the PopupMenu grab is active.
+        this.extension.copyAndPaste(emoji.char, null);
+        // Track as recent and refresh the recent row.
+        this.extension.pushRecentEmoji(emoji);
+        this._refreshRecent();
+    }
+
+    _refreshRecent() {
+        if (!this._recentRow) return;
+        this._recentRow.destroy_all_children();
+        const recent = this.extension.recentEmojis;
+        if (!recent.length) {
+            this._recentRow.visible = false;
+            return;
+        }
+        this._recentRow.visible = true;
+        for (const emoji of recent) {
+            const cell = new EmojiCell(emoji);
+            cell.connect('selected', (_c, e) => this._onSelected(e));
+            this._recentRow.add_child(cell);
+        }
     }
 
     destroy() {}

@@ -59,14 +59,15 @@ class WinVIndicator extends PanelMenu.Button {
         this._ensureContent(context);
         this._content.switchTab(tab);
 
-        // Fixed height (like Windows 11): both tabs show the same-size window,
-        // and the inner ScrollView scrolls when content overflows.
-        // The constraint goes on this.menu.box (the inner St.BoxLayout that
-        // holds the menu items), NOT on the BoxPointer — the BoxPointer sizes
-        // itself around .bin, so an actor-level min-height doesn't propagate.
+        // Fixed size (like Windows 11): both tabs show the same-size window.
+        // Constraints go on this.menu.box (the inner St.BoxLayout that holds
+        // the menu items), NOT on the BoxPointer — it sizes itself around .bin
+        // so actor-level constraints don't propagate.
         const monitor = Main.layoutManager.currentMonitor;
         const fixedHeight = Math.min(POPUP_MAX_HEIGHT, monitor.height - 24);
-        this.menu.box.set_style(`min-height: ${fixedHeight}px; max-height: ${fixedHeight}px;`);
+        this.menu.box.set_style(
+            `min-width: ${POPUP_WIDTH}px; max-width: ${POPUP_WIDTH}px;` +
+            `min-height: ${fixedHeight}px; max-height: ${fixedHeight}px;`);
 
         // Position the popup at the cursor (Windows-style) by repointing the
         // sourceActor. Clamp the anchor point so the popup won't open with its

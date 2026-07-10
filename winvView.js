@@ -61,11 +61,11 @@ export class WinvContent {
         topBar.add_child(new St.Widget({ x_expand: true }));
 
         topBar.add_child(this._iconButton('emblem-system-symbolic', () => {
+            // Close the menu, then open preferences after it's fully closed.
+            // We use a flag + the menu's open-state-changed signal instead of
+            // a blind timeout, so the prefs window opens at the right moment.
+            this._openPrefsOnClose = true;
             this.onClosed();
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-                this.extension.openPreferences();
-                return GLib.SOURCE_REMOVE;
-            });
         }));
         topBar.add_child(this._iconButton('window-close-symbolic', () => this.onClosed()));
 
@@ -91,13 +91,18 @@ export class WinvContent {
         this._renderActiveTab();
 
         // Focus the search shortly after the menu opens (emoji tab only).
+        // Also: open preferences after the menu closes (flag set by the ⚙ button).
         menu.connect('open-state-changed', (_m, isOpen) => {
-            if (isOpen)
+            if (isOpen) {
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
                     if (this._activeTab === TAB_EMOJI)
                         global.stage.set_key_focus(this._search);
                     return GLib.SOURCE_REMOVE;
                 });
+            } else if (this._openPrefsOnClose) {
+                this._openPrefsOnClose = false;
+                this.extension.openPreferences();
+            }
         });
     }
 

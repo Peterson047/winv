@@ -209,6 +209,12 @@
     background-color: rgba(128, 128, 128, 0.22);
 }
 
+/* ===== Emoji recent row (top) ===== */
+.winv-recent-row {
+    padding: 6px 6px 2px 6px;
+    spacing: 2px;
+}
+
 /* ===== Emoji category bar ===== */
 .winv-category-bar {
     padding: 4px 6px;

@@ -135,6 +135,18 @@ export default class WinVExtension extends Extension {
 
     // ---- helpers used by views -------------------------------------------
 
+    // Recently-used emojis (kept in memory for the session; persisted later).
+    // Newest first, capped at a small number for the "recent" row.
+    _recentEmojis = [];
+    get recentEmojis() { return this._recentEmojis; }
+    pushRecentEmoji(emoji) {
+        // Dedup by char, then unshift. Cap at 16 entries.
+        this._recentEmojis = this._recentEmojis.filter(e => e.char !== emoji.char);
+        this._recentEmojis.unshift(emoji);
+        if (this._recentEmojis.length > 16)
+            this._recentEmojis.length = 16;
+    }
+
     async copyAndPaste(text, closePopup) {
         const clipboard = St.Clipboard.get_default();
         clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
