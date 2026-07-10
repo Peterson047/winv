@@ -188,15 +188,13 @@ export class EmojiView {
     }
 
     _onSelected(emoji) {
-        // Windows 11 behavior: clicking an emoji inserts it into the focused app
-        // but KEEPS the picker open so the user can pick more. We copy the emoji
-        // to the clipboard and fire a synthetic Ctrl+V without closing the menu.
-        // The virtual keyboard event is emitted at the stage level, so it reaches
-        // the previously focused app even while the PopupMenu grab is active.
-        this.extension.copyAndPaste(emoji.char, null);
-        // Track as recent and refresh the recent row.
+        // Track as recent BEFORE closing (so the row updates on next open too).
         this.extension.pushRecentEmoji(emoji);
-        this._refreshRecent();
+        // GNOME reality: the PopupMenu modal grab prevents reliable paste into
+        // the focused app while open. So we close the picker first (which
+        // restores keyboard focus to the target app), then copy + paste — same
+        // pattern clipboard-indicator uses. copyAndPaste() handles the timing.
+        this.extension.copyAndPaste(emoji.char, () => this.onClosed());
     }
 
     _refreshRecent() {

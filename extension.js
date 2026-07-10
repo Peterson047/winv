@@ -150,9 +150,12 @@ export default class WinVExtension extends Extension {
     async copyAndPaste(text, closePopup) {
         const clipboard = St.Clipboard.get_default();
         clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+        // Close the menu FIRST so the modal grab releases and keyboard focus
+        // returns to the target app. Then paste after a short delay (matches
+        // the clipboard-indicator timing of ~50ms).
         if (closePopup) closePopup();
         if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
                 this.pasteIntoFocus();
                 return GLib.SOURCE_REMOVE;
             });
