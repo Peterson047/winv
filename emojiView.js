@@ -50,7 +50,7 @@ export class EmojiView {
     }
 
     build() {
-        const box = new St.BoxLayout({ vertical: true, reactive: true });
+        const box = new St.BoxLayout({ vertical: true, reactive: true, y_expand: true });
 
         // Category bar (also a drag handle).
         const catBar = new St.BoxLayout({
@@ -68,8 +68,14 @@ export class EmojiView {
             overlay_scrollbars: true,
             hscrollbar_policy: St.PolicyType.NEVER,
             vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            x_expand: true,
+            y_expand: true,
         });
-        this._gridContainer = new St.BoxLayout({ vertical: true, style_class: 'winv-emoji-grid-wrapper' });
+        this._gridContainer = new St.BoxLayout({
+            vertical: true,
+            style_class: 'winv-emoji-grid-wrapper',
+            x_expand: true,
+        });
         this._scrollView.add_child(this._gridContainer);
         box.add_child(this._scrollView);
 
@@ -158,6 +164,8 @@ export class EmojiView {
             const grid = new St.Widget({
                 layout_manager: new Clutter.GridLayout({ orientation: Clutter.Orientation.HORIZONTAL }),
                 style_class: 'winv-emoji-grid',
+                x_expand: true,
+                x_align: Clutter.ActorAlign.FILL,
             });
             const layout = grid.layout_manager;
             let col = 0, row = 0;

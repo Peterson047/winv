@@ -6,6 +6,7 @@
 // footer action.
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import St from 'gi://St';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
@@ -40,16 +41,37 @@ const HistoryRow = GObject.registerClass({
         'toggle-pin': { param_types: [GObject.TYPE_JSOBJECT] },
         'deleted':    { param_types: [GObject.TYPE_JSOBJECT] },
     },
-}, class HistoryRow extends St.BoxLayout {
+}, class HistoryRow extends St.Button {
+    // Using St.Button (not St.BoxLayout) gives a reliable 'clicked' signal for
+    // selection. Child action buttons (pin/delete) are themselves St.Buttons,
+    // which capture their own clicks — so clicking them does NOT bubble up to
+    // this row's clicked handler. No fragile get_source() filtering needed.
     _init(entry, thumbActor) {
-        super._init({ style_class: 'winv-row popup-menu-item', reactive: true, can_focus: true });
+        super._init({
+            style_class: 'winv-row',
+            reactive: true,
+            can_focus: true,
+            x_expand: true,
+        });
+        // St.Button renders a single 'label' by default; we manage our own
+        // children, so use a horizontal box as the button's content. The box
+        // must fill the button width so children distribute correctly (without
+        // x_fill they'd center instead of left-align, breaking the layout).
+        const content = new St.BoxLayout({
+            style_class: 'winv-row-inner',
+            x_expand: true,
+            x_align: Clutter.ActorAlign.FILL,
+        });
+        this.set_child(content);
 
         // Left: thumbnail (images) or icon (text)
         if (thumbActor) {
-            thumbActor.add_style_class_name('winv-thumb');
-            this.add_child(thumbActor);
+            // TextureCache returns a Clutter.Actor (not St.Widget), which has
+            // no add_style_class_name. Wrap it in an St.Bin for styling.
+            const thumbWrap = new St.Bin({ style_class: 'winv-thumb', child: thumbActor });
+            content.add_child(thumbWrap);
         } else {
-            this.add_child(new St.Icon({
+            content.add_child(new St.Icon({
                 icon_name: 'edit-paste-symbolic',
                 style_class: 'popup-menu-icon',
                 y_align: Clutter.ActorAlign.CENTER,
@@ -60,15 +82,18 @@ const HistoryRow = GObject.registerClass({
             text: truncate(entry.getStringValue(), ROW_PREVIEW_CHARS),
             style_class: 'winv-row-preview',
             x_expand: true,
+            x_align: Clutter.ActorAlign.START,
             y_align: Clutter.ActorAlign.CENTER,
         });
         preview.clutter_text.set_line_wrap(false);
         preview.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
-        this.add_child(preview);
+        content.add_child(preview);
 
-        this.add_child(new St.Widget({ x_expand: true }));
-
-        this.add_child(new St.Label({
+        // Right-aligned, fixed-width meta cluster: time + pin + delete.
+        // These must not shift with text length, so they sit after the
+        // expanding preview with their own fixed sizes.
+        const meta = new St.BoxLayout({ style_class: 'winv-meta', y_align: Clutter.ActorAlign.CENTER });
+        meta.add_child(new St.Label({
             text: relativeTime(entry.getTimestamp()),
             style_class: 'winv-time',
             y_align: Clutter.ActorAlign.CENTER,
@@ -83,10 +108,9 @@ const HistoryRow = GObject.registerClass({
             }),
             toggle_mode: true,
             checked: entry.isFavorite(),
-            y_align: Clutter.ActorAlign.CENTER,
         });
-        pinBtn.connect('clicked', () => this.emit('toggle-pin', this.entry));
-        this.add_child(pinBtn);
+        pinBtn.connect('clicked', () => { this.emit('toggle-pin', this.entry); });
+        meta.add_child(pinBtn);
 
         const delBtn = new St.Button({
             style_class: 'winv-action-btn',
@@ -95,41 +119,21 @@ const HistoryRow = GObject.registerClass({
                 icon_name: 'user-trash-symbolic',
                 style_class: 'popup-menu-icon',
             }),
-            y_align: Clutter.ActorAlign.CENTER,
         });
-        delBtn.connect('clicked', () => this.emit('deleted', this.entry));
-        this.add_child(delBtn);
+        delBtn.connect('clicked', () => { this.emit('deleted', this.entry); });
+        meta.add_child(delBtn);
+
+        content.add_child(meta);
 
         this.entry = entry;
         this._pinBtn = pinBtn;
         this._delBtn = delBtn;
 
-        // Clicking the row body selects it — but clicks on the pin/delete
-        // buttons must NOT trigger selection (they handle their own action).
-        // get_source()/key_focus can be null; guard against that.
-        const isActionButton = (actor) => {
-            if (!actor) return false;
-            return actor === pinBtn || pinBtn.contains(actor) ||
-                   actor === delBtn || delBtn.contains(actor);
-        };
-
-        this.connect('button-press-event', (_actor, event) => {
-            if (isActionButton(event.get_source()))
-                return Clutter.EVENT_PROPAGATE;
-            this.emit('selected', this.entry);
-            return Clutter.EVENT_STOP;
-        });
-        this.connect('key-press-event', (_a, event) => {
-            if (event.get_key_symbol() === Clutter.KEY_Return ||
-                event.get_key_symbol() === Clutter.KEY_KP_Enter) {
-                const focus = global.stage.key_focus;
-                if (focus && isActionButton(focus))
-                    return Clutter.EVENT_PROPAGATE;
-                this.emit('selected', this.entry);
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
-        });
+        // Row-level 'clicked' (body, not the action buttons) selects the item.
+        // Child St.Buttons consume their own clicks, so this only fires when the
+        // click lands on the row itself.
+        this.connect('clicked', () => this.emit('selected', this.entry));
+        this.connect('key-focus-in', () => {}); // keep focus ring
     }
 
     syncFavorite() {
@@ -159,7 +163,7 @@ export class ClipboardView {
     activate() { this._rebuildRows(); }
 
     build() {
-        const box = new St.BoxLayout({ vertical: true, reactive: true });
+        const box = new St.BoxLayout({ vertical: true, reactive: true, y_expand: true });
 
         // Control bar: "Tudo | Fixado" on the left, "Limpar tudo" on the right.
         // Collapsing the footer into this row saves vertical space.
@@ -242,7 +246,7 @@ export class ClipboardView {
         let thumbActor = null;
         if (entry.isImage()) {
             try {
-                const file = GLib.file_new_for_path(this.registry.imageFilePath(entry));
+                const file = Gio.File.new_for_path(this.registry.imageFilePath(entry));
                 const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
                 thumbActor = St.TextureCache.get_default()
                     .load_file_async(file, 40, 40, scaleFactor, 1.0);

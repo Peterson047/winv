@@ -39,7 +39,7 @@ export class ClipboardEntry {
         } else {
             // image: contents is the absolute path to the blob
             if (!GLib.file_test(jsonEntry.contents, FileTest.EXISTS)) return null;
-            const file = Gio.file_new_for_path(jsonEntry.contents);
+            const file = Gio.File.new_for_path(jsonEntry.contents);
             bytes = await new Promise((resolve, reject) =>
                 file.load_contents_async(null, (obj, res) => {
                     const [ok, contents] = obj.load_contents_finish(res);
@@ -116,7 +116,7 @@ export class Registry {
         this.ensureDir();
         const path = this.imageFilePath(entry);
         if (GLib.file_test(path, FileTest.EXISTS)) return; // dedupe
-        const file = Gio.file_new_for_path(path);
+        const file = Gio.File.new_for_path(path);
         await new Promise((resolve, reject) =>
             file.replace_async(null, false, Gio.FileCreateFlags.NONE,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
@@ -135,7 +135,7 @@ export class Registry {
         const path = this.imageFilePath(entry);
         if (!GLib.file_test(path, FileTest.EXISTS)) return;
         try {
-            const file = Gio.file_new_for_path(path);
+            const file = Gio.File.new_for_path(path);
             await file.delete_async(GLib.PRIORITY_DEFAULT, null);
         } catch (e) {
             console.error('WinV deleteEntryFile:', e);
@@ -170,7 +170,7 @@ export class Registry {
     _writeJson(json) {
         this.ensureDir();
         const bytes = new GLib.Bytes(json);
-        const file = Gio.file_new_for_path(this.REGISTRY_PATH);
+        const file = Gio.File.new_for_path(this.REGISTRY_PATH);
         return new Promise(resolve =>
             file.replace_async(null, false, Gio.FileCreateFlags.NONE,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
@@ -186,7 +186,7 @@ export class Registry {
 
     async read() {
         if (!GLib.file_test(this.REGISTRY_PATH, FileTest.EXISTS)) return [];
-        const file = Gio.file_new_for_path(this.REGISTRY_PATH);
+        const file = Gio.File.new_for_path(this.REGISTRY_PATH);
         const [ok, contents] = await new Promise(resolve =>
             file.load_contents_async(null, (obj, res) =>
                 resolve(obj.load_contents_finish(res))));
@@ -220,7 +220,7 @@ export class Registry {
 
     async clearCacheFolder() {
         try {
-            const folder = Gio.file_new_for_path(this.CACHE_DIR);
+            const folder = Gio.File.new_for_path(this.CACHE_DIR);
             const enumerator = folder.enumerate_children('', 1, null);
             let file;
             while ((file = enumerator.iterate(null)[2]) !== null)

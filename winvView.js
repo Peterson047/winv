@@ -1,20 +1,20 @@
 // Unified WinV content — built into a PopupMenu.PopupMenu (owned by the
-// PanelMenu.Button indicator). This is NOT a standalone popup; it adds menu
-// items (header, tabs, search, content) to the menu it's given.
+// PanelMenu.Button indicator). PopupMenu handles modal grab, keyboard nav,
+// Esc, and click-outside; we just lay out widgets directly in menu.box.
 //
-// PopupMenu handles modal grab, keyboard nav, Esc, and click-outside — so we
-// don't manage any of that here. We just lay out the widgets.
+// We do NOT use PopupBaseMenuItem/ActorMenuItem to wrap our custom widgets,
+// because PopupBaseMenuItem injects an ornament icon and a ClickGesture that
+// desalign and interfere with our own buttons. Instead we add raw St actors
+// straight to menu.box — the same St.BoxLayout the menu uses for its items.
 //
-// Layout added to the menu (top to bottom):
-//   [header: drag-title .......... ⚙ ✕]
-//   [tab switcher: 📋 clipboard | 😀 emoji]
-//   [shared search entry]
-//   [content area: clipboard list OR emoji grid]
+// Layout (top to bottom in menu.box):
+//   [top bar: 📋 😀 ............ ⚙ ✕]   <- drag handle + actions
+//   [search entry]                       <- emoji tab only
+//   [content: clipboard list OR emoji grid]
 
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -30,23 +30,13 @@ const TAB_ICONS = {
     [TAB_EMOJI]:     'face-smile-symbolic',
 };
 
-// A non-interactive menu item that just holds an arbitrary actor. Used to embed
-// our custom St widgets (header, tab bar, search, content) into the PopupMenu.
-const ActorMenuItem = GObject.registerClass(
-class ActorMenuItem extends PopupMenu.PopupBaseMenuItem {
-    _init(actor, { reactive } = {}) {
-        super._init({ reactive: !!reactive, can_focus: !!reactive, hover: false });
-        this.add_child(actor);
-    }
-});
-
 export class WinvContent {
     constructor({ manager, settings, registry, extension, popup, emojiData, onClosed }) {
         this.manager = manager;
         this.settings = settings;
         this.registry = registry;
         this.extension = extension;
-        this.popup = popup;       // the PanelMenu.Button (for drag)
+        this.popup = popup;
         this.onClosed = onClosed;
         this._emojiData = emojiData || [];
 
@@ -55,14 +45,11 @@ export class WinvContent {
         this._emojiView = null;
     }
 
-    // Build everything into the given PopupMenu.
     buildInto(menu) {
         this._menu = menu;
 
         // ---- Top bar: tab icons (left) + settings/close (right) ----
-        // Minimalist, like Windows 11: no title, just icon tabs + a few actions.
-        // The whole top bar is the drag handle.
-        const topBar = new St.BoxLayout({ style_class: 'winv-topbar winv-drag-handle', reactive: true });
+        const topBar = new St.BoxLayout({ style_class: 'winv-topbar winv-drag-handle' });
         this._makeDraggable(topBar);
 
         this._tabClipBtn = this._tabButton(TAB_CLIPBOARD);
@@ -70,18 +57,19 @@ export class WinvContent {
         topBar.add_child(this._tabClipBtn);
         topBar.add_child(this._tabEmojiBtn);
 
-        // Spacer pushes actions to the right.
+        // Expander fills the space between tabs and the right-side actions.
         topBar.add_child(new St.Widget({ x_expand: true }));
 
-        const settingsBtn = this._iconButton('emblem-system-symbolic', () => {
+        topBar.add_child(this._iconButton('emblem-system-symbolic', () => {
             this.onClosed();
-            this.extension.openPreferences();
-        });
-        topBar.add_child(settingsBtn);
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                this.extension.openPreferences();
+                return GLib.SOURCE_REMOVE;
+            });
+        }));
+        topBar.add_child(this._iconButton('window-close-symbolic', () => this.onClosed()));
 
-        const closeBtn = this._iconButton('window-close-symbolic', () => this.onClosed());
-        topBar.add_child(closeBtn);
-        menu.addMenuItem(new ActorMenuItem(topBar));
+        menu.box.add_child(topBar);
 
         // ---- Conditional search (emoji tab only; clipboard has none, like Win11) ----
         this._search = new St.Entry({
@@ -93,13 +81,12 @@ export class WinvContent {
         });
         this._search.set_primary_icon(new St.Icon({ icon_name: 'edit-find-symbolic', icon_size: 16 }));
         this._search.get_clutter_text().connect('text-changed', () => this._onSearchChanged());
-        this._searchItem = new ActorMenuItem(this._search);
-        this._searchItem.actor.visible = false; // hidden on clipboard tab
-        menu.addMenuItem(this._searchItem);
+        this._search.visible = false; // hidden on clipboard tab
+        menu.box.add_child(this._search);
 
-        // ---- Content area (one section we swap children of) ----
-        this._contentSection = new PopupMenu.PopupMenuSection();
-        menu.addMenuItem(this._contentSection);
+        // ---- Content area ----
+        this._contentBox = new St.BoxLayout({ vertical: true, x_expand: true, y_expand: true });
+        menu.box.add_child(this._contentBox);
 
         this._renderActiveTab();
 
@@ -138,7 +125,6 @@ export class WinvContent {
     switchTab(tabId) {
         if (this._activeTab === tabId && (this._clipboardView || this._emojiView)) return;
 
-        // Tear down previous tab.
         if (this._clipboardView) { this._clipboardView.destroy(); this._clipboardView = null; }
         if (this._emojiView)     { this._emojiView.destroy();     this._emojiView = null; }
 
@@ -148,16 +134,13 @@ export class WinvContent {
 
         // Search is only shown on the emoji tab (Windows 11 style).
         this._search.set_text('');
-        this._searchItem.actor.visible = (tabId === TAB_EMOJI);
+        this._search.visible = (tabId === TAB_EMOJI);
 
         this._renderActiveTab();
     }
 
     _renderActiveTab() {
-        // Destroy any actors previously added to the content section. We can't
-        // use section.removeAll() because we add raw St actors (not PopupMenu
-        // items), so the two APIs would desync and leave stale content behind.
-        this._contentSection.actor.destroy_all_children();
+        this._contentBox.destroy_all_children();
         if (this._activeTab === TAB_CLIPBOARD) {
             this._clipboardView = new ClipboardView({
                 manager: this.manager,
@@ -168,7 +151,7 @@ export class WinvContent {
             });
             const content = this._clipboardView.build();
             this._clipboardView.setFilter(this._search.get_text());
-            this._contentSection.actor.add_child(content);
+            this._contentBox.add_child(content);
         } else {
             this._emojiView = new EmojiView({
                 extension: this.extension,
@@ -178,7 +161,7 @@ export class WinvContent {
             });
             this._emojiView._all = this._emojiData;
             const content = this._emojiView.build();
-            this._contentSection.actor.add_child(content);
+            this._contentBox.add_child(content);
             this._emojiView._query = this._search.get_text();
             this._emojiView._populate();
         }
@@ -194,47 +177,43 @@ export class WinvContent {
         }
     }
 
-    // Drag handle: on press, hand off to the indicator's menu-less drag helper.
-    // (We keep drag simple: pressing+moving the title nudges the menu actor.)
+    // Drag: press on the top bar -> track motion on the stage until release.
     _makeDraggable(actor) {
         if (actor._winvDragWired) return;
         actor._winvDragWired = true;
-        let dragging = false, lastX = 0, lastY = 0;
+
         actor.connect('button-press-event', (_a, event) => {
             if (event.get_button() !== 1) return Clutter.EVENT_PROPAGATE;
-            [lastX, lastY] = event.get_coords();
-            dragging = true;
+            const [startX, startY] = event.get_coords();
+            const dragId = global.stage.connect('captured-event', (_s, ev) => {
+                const type = ev.type();
+                if (type === Clutter.EventType.MOTION) {
+                    const [x, y] = ev.get_coords();
+                    this._nudgeMenu(x - startX, y - startY, startX, startY);
+                    return Clutter.EVENT_STOP;
+                }
+                if (type === Clutter.EventType.BUTTON_RELEASE) {
+                    global.stage.disconnect(dragId);
+                    return Clutter.EVENT_STOP;
+                }
+                return Clutter.EVENT_PROPAGATE;
+            });
             return Clutter.EVENT_STOP;
-        });
-        global.stage.connect('captured-event', (_s, event) => {
-            if (!dragging) return Clutter.EVENT_PROPAGATE;
-            if (event.type() === Clutter.EventType.MOTION) {
-                const [x, y] = event.get_coords();
-                const dx = x - lastX, dy = y - lastY;
-                lastX = x; lastY = y;
-                this._nudgeMenu(dx, dy);
-                return Clutter.EVENT_STOP;
-            }
-            if (event.type() === Clutter.EventType.BUTTON_RELEASE) {
-                dragging = false;
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
         });
     }
 
-    // Move the open menu by (dx, dy), clamped to the current monitor.
-    _nudgeMenu(dx, dy) {
+    // Reposition the open menu, clamped to monitor. Guard against destroyed menu.
+    _nudgeMenu(dx, dy, startX, startY) {
+        if (!this._menu || !this._menu.isOpen) return;
         const actor = this._menu.actor;
         if (!actor) return;
-        let [x, y] = actor.get_position();
-        x += dx; y += dy;
+        let x = startX + dx, y = startY + dy;
         const monitor = Main.layoutManager.currentMonitor;
-        const w = actor.width, h = actor.height;
+        const w = actor.width || 0, h = actor.height || 0;
         const M = 8;
         x = Math.max(monitor.x + M, Math.min(x, monitor.x + monitor.width - w - M));
         y = Math.max(monitor.y + M, Math.min(y, monitor.y + monitor.height - h - M));
-        actor.set_position(x, y);
+        try { actor.set_position(x, y); } catch (e) { /* mid-teardown */ }
     }
 
     destroy() {

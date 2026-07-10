@@ -59,11 +59,14 @@ class WinVIndicator extends PanelMenu.Button {
         this._ensureContent(context);
         this._content.switchTab(tab);
 
-        // Cap the popup height so long lists (emoji grid, big history) scroll
-        // inside instead of growing to fill the whole screen.
+        // Fixed height (like Windows 11): both tabs show the same-size window,
+        // and the inner ScrollView scrolls when content overflows.
+        // The constraint goes on this.menu.box (the inner St.BoxLayout that
+        // holds the menu items), NOT on the BoxPointer — the BoxPointer sizes
+        // itself around .bin, so an actor-level min-height doesn't propagate.
         const monitor = Main.layoutManager.currentMonitor;
-        const maxHeight = Math.min(POPUP_MAX_HEIGHT, monitor.height - 24);
-        this.menu.actor.set_style(`max-height: ${maxHeight}px;`);
+        const fixedHeight = Math.min(POPUP_MAX_HEIGHT, monitor.height - 24);
+        this.menu.box.set_style(`min-height: ${fixedHeight}px; max-height: ${fixedHeight}px;`);
 
         // Position the popup at the cursor (Windows-style) by repointing the
         // sourceActor. Clamp the anchor point so the popup won't open with its
@@ -72,7 +75,7 @@ class WinVIndicator extends PanelMenu.Button {
             const [px, py] = global.get_pointer();
             // The menu opens with its top-left at the sourceActor, so if the
             // cursor is near the bottom edge, anchor higher up.
-            const anchorY = Math.min(py, monitor.y + monitor.height - maxHeight - 8);
+            const anchorY = Math.min(py, monitor.y + monitor.height - fixedHeight - 8);
             const anchorX = Math.min(px, monitor.x + monitor.width - POPUP_WIDTH - 8);
             this._cursorActor.set_position(Math.max(anchorX, monitor.x + 8),
                                            Math.max(anchorY, monitor.y + 8));

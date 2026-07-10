@@ -93,18 +93,22 @@
 }
 
 /* ===== History list / scroll area =====
- * The ScrollView itself needs max-height (not its child) to activate the
- * vertical scrollbar. This caps the list height so it scrolls. */
+ * The ScrollView fills the popup's fixed-height content area and scrolls when
+ * content overflows. y_expand makes it take the remaining vertical space. */
 .winv-scroll {
     padding: 0 2px;
-    max-height: 400px;
+    y_expand: true;
 }
 
 /* ===== A single history row =====
- * Clean: small icon/thumbnail, text preview, then time + tiny action buttons. */
+ * Clean: small icon/thumbnail, text preview, then time + tiny action buttons.
+ * The row is an St.Button whose child is a horizontal .winv-row-inner box. */
 .winv-row {
     padding: 7px 10px;
     border-radius: 7px;
+}
+
+.winv-row-inner {
     spacing: 8px;
 }
 
@@ -112,24 +116,35 @@
     background-color: rgba(128, 128, 128, 0.12);
 }
 
+.winv-row:focus {
+    background-color: rgba(128, 128, 128, 0.12);
+}
+
+.winv-row:checked {
+    background-color: rgba(128, 128, 128, 0.18);
+}
+
 .winv-row-preview {
     max-width: 210px;
 }
 
 .winv-meta {
-    spacing: 6px;
+    /* Fixed-width right cluster: time + pin + delete. Spacing tight so the
+     * buttons stay aligned regardless of preview text length. */
+    spacing: 4px;
 }
 
 .winv-time {
     font-size: 9pt;
     opacity: 0.6;
+    min-width: 32px; /* fixed so the column doesn't jitter as times change */
 }
 
-/* Tiny action buttons (pin, delete) — only fully visible on hover. */
+/* Tiny action buttons (pin, delete) — fixed size so they never shift. */
 .winv-action-btn {
     border-radius: 5px;
-    min-width: 20px;
-    min-height: 20px;
+    min-width: 22px;
+    min-height: 22px;
     padding: 3px;
     opacity: 0.55;
     transition-duration: 80ms;

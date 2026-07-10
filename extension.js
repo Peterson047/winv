@@ -95,8 +95,13 @@ export default class WinVExtension extends Extension {
     // ---- popup launcher ---------------------------------------------------
 
     open(tab) {
-        // Toggle: if already open, close.
-        if (this._indicator.isOpen) { this._indicator.close(); return; }
+        // Toggle behavior: if the menu is open, close it. But if the menu is
+        // in a stale state (closed by selecting an item but isOpen not yet
+        // updated), force-close first then reopen.
+        if (this._indicator.isOpen) {
+            this._indicator.close();
+            return;
+        }
         this._indicator.openAtCursor(tab || TAB.CLIPBOARD, this._context());
     }
 
@@ -115,7 +120,7 @@ export default class WinVExtension extends Extension {
     // Load emoji.json (bundled) once, in the background.
     _loadEmojiData() {
         const path = `${this.path}/emoji.json`;
-        const file = Gio.file_new_for_path(path);
+        const file = Gio.File.new_for_path(path);
         file.load_contents_async(null, (obj, res) => {
             try {
                 const [ok, bytes] = obj.load_contents_finish(res);
