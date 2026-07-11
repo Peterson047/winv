@@ -35,6 +35,25 @@ export class ClipboardManager {
         // Reentrancy guard: when WE write to the clipboard (item reselected),
         // owner-changed fires again — skip it.
         this._suppressNext = false;
+
+        this._listeners = [];
+    }
+
+    connect(callback) {
+        this._listeners.push(callback);
+        return () => {
+            this._listeners = this._listeners.filter(cb => cb !== callback);
+        };
+    }
+
+    _emitChanged() {
+        for (const cb of this._listeners) {
+            try {
+                cb();
+            } catch (e) {
+                console.error('WinV: callback error in manager:', e);
+            }
+        }
     }
 
     async init() {
@@ -112,6 +131,7 @@ export class ClipboardManager {
                 this.entries.unshift(existing);
             }
             this._scheduleSave();
+            this._emitChanged();
             return;
         }
 
@@ -132,6 +152,7 @@ export class ClipboardManager {
         }
 
         this._scheduleSave();
+        this._emitChanged();
     }
 
     // Public: the UI calls this when the user re-selects an old item.
@@ -155,6 +176,7 @@ export class ClipboardManager {
                 e.setTimestamp(Date.now());
                 this.entries.unshift(e);
                 this._scheduleSave();
+                this._emitChanged();
             }
         }
     }
@@ -162,6 +184,7 @@ export class ClipboardManager {
     toggleFavorite(entry) {
         entry.favorite = !entry.isFavorite();
         this._scheduleSave();
+        this._emitChanged();
     }
 
     deleteEntry(entry) {
@@ -171,6 +194,7 @@ export class ClipboardManager {
             if (entry.isImage())
                 this.registry.deleteEntryFile(entry).catch(() => {});
             this._scheduleSave();
+            this._emitChanged();
         }
     }
 
@@ -183,6 +207,7 @@ export class ClipboardManager {
                 await this.registry.deleteEntryFile(e).catch(() => {});
         }
         this._scheduleSave();
+        this._emitChanged();
     }
 
     filtered(query, onlyFavorites) {

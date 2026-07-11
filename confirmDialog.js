@@ -30,7 +30,7 @@ class ConfirmDialog extends ModalDialog.ModalDialog {
             {
                 label: cancelLabel,
                 action: () => this.close(),
-                key: Clutter.Escape,
+                key: Clutter.KEY_Escape,
             },
             {
                 label: okLabel,
@@ -48,11 +48,18 @@ export class DialogManager {
         if (this.#open) return;
         const dlg = new ConfirmDialog(title, message, okLabel, cancelLabel, callback);
         this.#open = dlg;
-        dlg.connect('closed', () => { this.#open = null; });
+        dlg.connect('closed', () => {
+            dlg.destroy();
+            this.#open = null;
+        });
         dlg.open();
     }
 
     destroy() {
-        if (this.#open) { this.#open.close(); this.#open = null; }
+        if (this.#open) {
+            this.#open.close();
+            this.#open.destroy();
+            this.#open = null;
+        }
     }
 }

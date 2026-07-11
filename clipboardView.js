@@ -157,6 +157,12 @@ export class ClipboardView {
         this._onlyFavorites = false;
         this._rows = new Map();
         this._dialogs = new DialogManager();
+
+        this._disconnectManager = this.manager.connect(() => {
+            if (this.actor && this.actor.visible) {
+                this._rebuildRows();
+            }
+        });
     }
 
     // Called when the tab becomes active: refresh + focus search.
@@ -322,7 +328,15 @@ export class ClipboardView {
         }
     }
 
+    refresh() {
+        this._rebuildRows();
+    }
+
     destroy() {
+        if (this._disconnectManager) {
+            this._disconnectManager();
+            this._disconnectManager = null;
+        }
         this._dialogs.destroy();
     }
 }

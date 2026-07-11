@@ -28,7 +28,7 @@ export default class WinVPrefs extends ExtensionPreferences {
 
         const enableKeys = new Adw.SwitchRow({
             title: _('Ativar atalhos'),
-            subtitle: _('Liga/desliga Win+V e Win+. globalmente'),
+            subtitle: _('Liga/desliga Win+V e Win+E globalmente'),
         });
         group.add(enableKeys);
 
@@ -41,7 +41,7 @@ export default class WinVPrefs extends ExtensionPreferences {
         group.add(clipRow);
 
         const emojiRow = this._makeShortcutRow(
-            _('Abrir emojis (Win+.)'),
+            _('Abrir emojis (Win+E)'),
             _('Clique e pressione o atalho desejado'),
         );
         const emojiBtn = this._makeShortcutButton(settings, Prefs.EMOJI_KEYBINDING, emojiRow);
@@ -65,13 +65,12 @@ export default class WinVPrefs extends ExtensionPreferences {
         const refresh = () => {
             const val = settings.get_strv(prefKey)[0];
             if (val) {
-                // Pretty-print: <Super>v -> "Super+V"
-                const pretty = val
-                    .replace(/</g, '')
-                    .replace(/>/g, '')
-                    .split(/(?=[A-Z])/) // crude, but readable
-                    .join('+');
-                button.set_label(pretty);
+                const [ok, keyval, mods] = Gtk.accelerator_parse(val);
+                if (ok) {
+                    button.set_label(Gtk.accelerator_get_label(keyval, mods));
+                } else {
+                    button.set_label(val);
+                }
             } else {
                 button.set_label(_('Desativado'));
             }
@@ -99,11 +98,11 @@ export default class WinVPrefs extends ExtensionPreferences {
 
                 // Escape cancels, BackSpace clears.
                 if (mods === 0) {
-                    if (keyval === Gdk.KEY_Escape) { finish(true); return Gdk.EVENT_STOP; }
+                    if (keyval === Gdk.KEY_Escape) { finish(true); return true; }
                     if (keyval === Gdk.KEY_BackSpace) {
                         settings.set_strv(prefKey, []);
                         finish(true);
-                        return Gdk.EVENT_STOP;
+                        return true;
                     }
                 }
 
@@ -113,12 +112,12 @@ export default class WinVPrefs extends ExtensionPreferences {
                 if (accel && Gtk.accelerator_valid(keyval, mods)) {
                     settings.set_strv(prefKey, [accel]);
                     finish(true);
-                    return Gdk.EVENT_STOP;
+                    return true;
                 }
 
                 // Otherwise it's a modifier alone — keep listening.
                 button.set_label(_('Pressione o atalho…'));
-                return Gdk.EVENT_STOP;
+                return true;
             });
         });
         return button;
@@ -144,12 +143,12 @@ export default class WinVPrefs extends ExtensionPreferences {
             rows[key] = row;
         };
 
-        addSwitch(Prefs.CACHE_IMAGES,    _('Guardar imagens'), _('Inclui screenshots e imagens copiadas'));
+        addSwitch(Prefs.CACHE_IMAGES, _('Guardar imagens'), _('Inclui screenshots e imagens copiadas'));
         addSwitch(Prefs.PASTE_ON_SELECT, _('Colar automaticamente'), _('Simula Ctrl+V no app focado ao selecionar um item'));
         addSwitch(Prefs.MOVE_ITEM_FIRST, _('Mover reusado para o topo'));
-        addSwitch(Prefs.CONFIRM_CLEAR,   _('Confirmar ao limpar tudo'));
-        addSwitch(Prefs.STRIP_TEXT,      _('Remover espaços do texto copiado'));
-        addSwitch(Prefs.OPEN_AT_CURSOR,  _('Abrir popup no cursor'), _('Desligue para abrir centralizado'));
+        addSwitch(Prefs.CONFIRM_CLEAR, _('Confirmar ao limpar tudo'));
+        addSwitch(Prefs.STRIP_TEXT, _('Remover espaços do texto copiado'));
+        addSwitch(Prefs.OPEN_AT_CURSOR, _('Abrir popup no cursor'), _('Desligue para abrir centralizado'));
 
         settings.bind(Prefs.HISTORY_SIZE, historySize, 'value', Gio.SettingsBindFlags.DEFAULT);
 

@@ -34,6 +34,11 @@ export default class WinVExtension extends Extension {
         this._emojiData = [];
         this._loadEmojiData();
 
+        this._recentEmojis = [];
+        this._registry.readRecentEmojis().then(emojis => {
+            this._recentEmojis = emojis;
+        }).catch(e => console.error('WinV: load recent emojis failed:', e));
+
         // Top-bar indicator — owns the PopupMenu (the popup window).
         this._indicator = new WinVIndicator();
         // Left-click opens the clipboard tab (Windows-style "open here").
@@ -99,6 +104,11 @@ export default class WinVExtension extends Extension {
         // in a stale state (closed by selecting an item but isOpen not yet
         // updated), force-close first then reopen.
         if (this._indicator.isOpen) {
+            const content = this._indicator._content;
+            if (content && tab && content._activeTab !== tab) {
+                content.switchTab(tab);
+                return;
+            }
             this._indicator.close();
             return;
         }
@@ -127,6 +137,10 @@ export default class WinVExtension extends Extension {
                 if (!ok) return;
                 const text = new TextDecoder().decode(bytes);
                 this._emojiData = JSON.parse(text);
+                if (this._indicator?._content?._emojiView) {
+                    this._indicator._content._emojiView._all = this._emojiData;
+                    this._indicator._content._emojiView._populate();
+                }
             } catch (e) {
                 console.error('WinV: emoji.json load failed:', e);
             }
@@ -135,15 +149,49 @@ export default class WinVExtension extends Extension {
 
     // ---- helpers used by views -------------------------------------------
 
+    // Recently-used emojis (kept in memory for the session; persisted later).
+    // Newest first, capped at a small number for the "recent" row.
+    _recentEmojis = [];
+    get recentEmojis() { return this._recentEmojis; }
+    pushRecentEmoji(emoji) {
+        // Dedup by char, then unshift. Cap at 16 entries.
+        this._recentEmojis = this._recentEmojis.filter(e => e.char !== emoji.char);
+        this._recentEmojis.unshift(emoji);
+        if (this._recentEmojis.length > 16)
+            this._recentEmojis.length = 16;
+        this._registry.writeRecentEmojis(this._recentEmojis).catch(e => console.error(e));
+    }
+
     async copyAndPaste(text, closePopup) {
         const clipboard = St.Clipboard.get_default();
         clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+        // Close the menu FIRST so the modal grab releases and keyboard focus
+        // returns to the target app. Then paste after a short delay (matches
+        // the clipboard-indicator timing of ~50ms).
         if (closePopup) closePopup();
         if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
                 this.pasteIntoFocus();
                 return GLib.SOURCE_REMOVE;
             });
+        }
+    }
+
+    commitEmoji(char, closePopup) {
+        if (closePopup) closePopup();
+        if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+                try {
+                    Main.inputMethod.commit(char);
+                } catch (e) {
+                    console.error('WinV: commit emoji failed, falling back to clipboard:', e);
+                    this.copyAndPaste(char, null);
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+        } else {
+            const clipboard = St.Clipboard.get_default();
+            clipboard.set_text(St.ClipboardType.CLIPBOARD, char);
         }
     }
 
