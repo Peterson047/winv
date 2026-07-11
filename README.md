@@ -1,19 +1,19 @@
-```plaintext
-WinV — Clipboard & Emoji for GNOME
-```
+## WinV — Clipboard &amp; Emoji for GNOME
 
-\> Bring the Windows 11 clipboard history and emoji picker experience to GNOME.
+&gt; Bring the Windows 11 clipboard history and emoji picker experience to GNOME.
+
+![WinV Demo](./public/demo.gif)
 
 WinV is a GNOME Shell extension that recreates the **Windows 11 "Win+V" clipboard**  
 **history** and the **"Win+E" emoji picker** — including the floating, cursor-anchored  
 popup, drag-to-move window, pinned items, image support, and automatic paste.
 
-| **Clipboard history** (`Super`+`V`) | Text + images, search, pin, delete, clear |
-| **Emoji picker** (`Super`+`E`) | 1500+ emojis with keyword search, categories |
-| **Cursor-anchored popup** | Opens at the pointer, clamped to the monitor |
-| **Draggable window** | Grab the title or search bar to reposition |
-| **Automatic paste** | Selected item / emoji is pasted into the focused app |
-| **Theme-aware** | Adapts to light or dark GNOME shell themes |
+| **Clipboard history** (`Super`+`V`) | Text + images, search, pin, delete, clear |  
+| **Emoji picker** (`Super`+`E`) | 1500+ emojis with keyword search, categories |  
+| **Cursor-anchored popup** | Opens at the pointer, clamped to the monitor |  
+| **Draggable window** | Grab the title or search bar to reposition |  
+| **Automatic paste** | Selected item / emoji is pasted into the focused app |  
+| **Theme-aware** | Adapts to light or dark GNOME shell themes |  
 | **Top-bar indicator** | Quick access button with preferences menu |
 
 ## How it works
@@ -82,9 +82,9 @@ Then **restart GNOME Shell** to load the extension:
 *   **Wayland** (default on Ubuntu 26.04): log out and back in.
 *   **X11**: press Alt+F2, type `r`, press Enter.
 
-\> 💡 **Development tip:** For faster iteration, log into a **"GNOME on Xorg"**  
-\> session from the login screen. This lets you restart the shell instantly with  
-\> Alt+F2 → `r` without closing your applications.
+&gt; 💡 **Development tip:** For faster iteration, log into a **"GNOME on Xorg"**  
+&gt; session from the login screen. This lets you restart the shell instantly with  
+&gt; Alt+F2 → `r` without closing your applications.
 
 ### From extensions.gnome.org
 

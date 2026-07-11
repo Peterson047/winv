@@ -182,7 +182,7 @@ export default class WinVExtension extends Extension {
         if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
                 try {
-                    Main.inputMethod.commit_text(char);
+                    Main.inputMethod.commit(char);
                 } catch (e) {
                     console.error('WinV: commit emoji failed, falling back to clipboard:', e);
                     this.copyAndPaste(char, null);

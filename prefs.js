@@ -77,7 +77,7 @@ export default class WinVPrefs extends ExtensionPreferences {
         };
         refresh();
 
-        settings.connectObject(`changed::${prefKey}`, refresh, button);
+        settings.connect(`changed::${prefKey}`, refresh);
 
         button.connect('clicked', () => {
             button.set_label(_('Pressione o atalho…'));
@@ -143,12 +143,12 @@ export default class WinVPrefs extends ExtensionPreferences {
             rows[key] = row;
         };
 
-        addSwitch(Prefs.CACHE_IMAGES,    _('Guardar imagens'), _('Inclui screenshots e imagens copiadas'));
+        addSwitch(Prefs.CACHE_IMAGES, _('Guardar imagens'), _('Inclui screenshots e imagens copiadas'));
         addSwitch(Prefs.PASTE_ON_SELECT, _('Colar automaticamente'), _('Simula Ctrl+V no app focado ao selecionar um item'));
         addSwitch(Prefs.MOVE_ITEM_FIRST, _('Mover reusado para o topo'));
-        addSwitch(Prefs.CONFIRM_CLEAR,   _('Confirmar ao limpar tudo'));
-        addSwitch(Prefs.STRIP_TEXT,      _('Remover espaços do texto copiado'));
-        addSwitch(Prefs.OPEN_AT_CURSOR,  _('Abrir popup no cursor'), _('Desligue para abrir centralizado'));
+        addSwitch(Prefs.CONFIRM_CLEAR, _('Confirmar ao limpar tudo'));
+        addSwitch(Prefs.STRIP_TEXT, _('Remover espaços do texto copiado'));
+        addSwitch(Prefs.OPEN_AT_CURSOR, _('Abrir popup no cursor'), _('Desligue para abrir centralizado'));
 
         settings.bind(Prefs.HISTORY_SIZE, historySize, 'value', Gio.SettingsBindFlags.DEFAULT);
 
