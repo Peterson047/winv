@@ -30,7 +30,7 @@ class ConfirmDialog extends ModalDialog.ModalDialog {
             {
                 label: cancelLabel,
                 action: () => this.close(),
-                key: Clutter.Escape,
+                key: Clutter.KEY_Escape,
             },
             {
                 label: okLabel,

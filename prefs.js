@@ -99,11 +99,11 @@ export default class WinVPrefs extends ExtensionPreferences {
 
                 // Escape cancels, BackSpace clears.
                 if (mods === 0) {
-                    if (keyval === Gdk.KEY_Escape) { finish(true); return Gdk.EVENT_STOP; }
+                    if (keyval === Gdk.KEY_Escape) { finish(true); return true; }
                     if (keyval === Gdk.KEY_BackSpace) {
                         settings.set_strv(prefKey, []);
                         finish(true);
-                        return Gdk.EVENT_STOP;
+                        return true;
                     }
                 }
 
@@ -113,12 +113,12 @@ export default class WinVPrefs extends ExtensionPreferences {
                 if (accel && Gtk.accelerator_valid(keyval, mods)) {
                     settings.set_strv(prefKey, [accel]);
                     finish(true);
-                    return Gdk.EVENT_STOP;
+                    return true;
                 }
 
                 // Otherwise it's a modifier alone — keep listening.
                 button.set_label(_('Pressione o atalho…'));
-                return Gdk.EVENT_STOP;
+                return true;
             });
         });
         return button;

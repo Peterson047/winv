@@ -192,9 +192,9 @@ export class EmojiView {
         this.extension.pushRecentEmoji(emoji);
         // GNOME reality: the PopupMenu modal grab prevents reliable paste into
         // the focused app while open. So we close the picker first (which
-        // restores keyboard focus to the target app), then copy + paste — same
-        // pattern clipboard-indicator uses. copyAndPaste() handles the timing.
-        this.extension.copyAndPaste(emoji.char, () => this.onClosed());
+        // restores keyboard focus to the target app), then commit text — same
+        // pattern clipboard-indicator uses. commitEmoji() handles the timing.
+        this.extension.commitEmoji(emoji.char, () => this.onClosed());
     }
 
     _refreshRecent() {

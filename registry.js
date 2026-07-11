@@ -203,8 +203,14 @@ export class Registry {
             return [];
         }
 
-        const entries = (await Promise.all(registry.map(ClipboardEntry.fromJSON)))
-            .filter(e => e !== null);
+        const entries = (await Promise.all(registry.map(async item => {
+            try {
+                return await ClipboardEntry.fromJSON(item);
+            } catch (e) {
+                console.error('WinV: error loading registry entry:', e);
+                return null;
+            }
+        }))).filter(e => e !== null);
 
         // Enforce history-size, never dropping favorites.
         const maxSize = this.settings.get_int('history-size');
@@ -218,13 +224,51 @@ export class Registry {
         return entries;
     }
 
+    async readRecentEmojis() {
+        const path = `${this.CACHE_DIR}/recent_emojis.json`;
+        if (!GLib.file_test(path, FileTest.EXISTS)) return [];
+        const file = Gio.File.new_for_path(path);
+        try {
+            const [ok, contents] = await new Promise(resolve =>
+                file.load_contents_async(null, (obj, res) =>
+                    resolve(obj.load_contents_finish(res))));
+            if (!ok) return [];
+            const text = new TextDecoder().decode(contents);
+            return JSON.parse(text);
+        } catch (e) {
+            console.error('WinV readRecentEmojis:', e);
+            return [];
+        }
+    }
+
+    async writeRecentEmojis(emojis) {
+        this.ensureDir();
+        const json = JSON.stringify(emojis);
+        const bytes = new GLib.Bytes(json);
+        const path = `${this.CACHE_DIR}/recent_emojis.json`;
+        const file = Gio.File.new_for_path(path);
+        return new Promise(resolve =>
+            file.replace_async(null, false, Gio.FileCreateFlags.NONE,
+                GLib.PRIORITY_DEFAULT, null, (obj, res) => {
+                    const stream = obj.replace_finish(res);
+                    stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null,
+                        (w_obj, w_res) => {
+                            w_obj.write_bytes_finish(w_res);
+                            stream.close(null);
+                            resolve();
+                        });
+                }));
+    }
+
     async clearCacheFolder() {
         try {
             const folder = Gio.File.new_for_path(this.CACHE_DIR);
-            const enumerator = folder.enumerate_children('', 1, null);
-            let file;
-            while ((file = enumerator.iterate(null)[2]) !== null)
-                file.delete(null);
+            const enumerator = folder.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+            let info;
+            while ((info = enumerator.next_file(null)) !== null) {
+                const child = enumerator.get_child(info);
+                child.delete_async(GLib.PRIORITY_DEFAULT, null).catch(e => console.error(e));
+            }
         } catch (e) {
             console.error('WinV clearCacheFolder:', e);
         }

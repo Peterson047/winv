@@ -43,6 +43,7 @@ export class WinvContent {
         this._activeTab = TAB_CLIPBOARD;
         this._clipboardView = null;
         this._emojiView = null;
+        this._dragId = null;
     }
 
     buildInto(menu) {
@@ -88,12 +89,39 @@ export class WinvContent {
         this._contentBox = new St.BoxLayout({ vertical: true, x_expand: true, y_expand: true });
         menu.box.add_child(this._contentBox);
 
-        this._renderActiveTab();
+        // Instantiate both views once (BUG-12)
+        this._clipboardView = new ClipboardView({
+            manager: this.manager,
+            settings: this.settings,
+            registry: this.registry,
+            extension: this.extension,
+            onClosed: this.onClosed,
+        });
+        const clipContent = this._clipboardView.build();
+        this._contentBox.add_child(clipContent);
+
+        this._emojiView = new EmojiView({
+            extension: this.extension,
+            settings: this.settings,
+            onClosed: this.onClosed,
+            searchEntry: this._search,
+        });
+        this._emojiView._all = this._emojiData;
+        const emojiContent = this._emojiView.build();
+        this._contentBox.add_child(emojiContent);
+
+        // Set initial visibility states
+        this._clipboardView.actor.visible = (this._activeTab === TAB_CLIPBOARD);
+        this._emojiView.actor.visible = (this._activeTab === TAB_EMOJI);
 
         // Focus the search shortly after the menu opens (emoji tab only).
         // Also: open preferences after the menu closes (flag set by the ⚙ button).
         menu.connect('open-state-changed', (_m, isOpen) => {
             if (isOpen) {
+                // BUG-13: Refresh clipboard entries and relative times
+                if (this._clipboardView) {
+                    this._clipboardView.refresh();
+                }
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
                     if (this._activeTab === TAB_EMOJI)
                         global.stage.set_key_focus(this._search);
@@ -128,10 +156,7 @@ export class WinvContent {
     }
 
     switchTab(tabId) {
-        if (this._activeTab === tabId && (this._clipboardView || this._emojiView)) return;
-
-        if (this._clipboardView) { this._clipboardView.destroy(); this._clipboardView = null; }
-        if (this._emojiView)     { this._emojiView.destroy();     this._emojiView = null; }
+        if (this._activeTab === tabId) return;
 
         this._activeTab = tabId;
         this._tabClipBtn.checked = tabId === TAB_CLIPBOARD;
@@ -141,34 +166,19 @@ export class WinvContent {
         this._search.set_text('');
         this._search.visible = (tabId === TAB_EMOJI);
 
-        this._renderActiveTab();
-    }
-
-    _renderActiveTab() {
-        this._contentBox.destroy_all_children();
-        if (this._activeTab === TAB_CLIPBOARD) {
-            this._clipboardView = new ClipboardView({
-                manager: this.manager,
-                settings: this.settings,
-                registry: this.registry,
-                extension: this.extension,
-                onClosed: this.onClosed,
-            });
-            const content = this._clipboardView.build();
-            this._clipboardView.setFilter(this._search.get_text());
-            this._contentBox.add_child(content);
-        } else {
-            this._emojiView = new EmojiView({
-                extension: this.extension,
-                settings: this.settings,
-                onClosed: this.onClosed,
-                searchEntry: this._search,
-            });
-            this._emojiView._all = this._emojiData;
-            const content = this._emojiView.build();
-            this._contentBox.add_child(content);
-            this._emojiView._query = this._search.get_text();
-            this._emojiView._populate();
+        if (this._clipboardView) {
+            this._clipboardView.actor.visible = (tabId === TAB_CLIPBOARD);
+            if (tabId === TAB_CLIPBOARD) {
+                this._clipboardView.setFilter('');
+            }
+        }
+        if (this._emojiView) {
+            this._emojiView.actor.visible = (tabId === TAB_EMOJI);
+            if (tabId === TAB_EMOJI) {
+                this._emojiView._query = '';
+                this._emojiView._populate();
+                this._emojiView._refreshRecent();
+            }
         }
     }
 
@@ -189,16 +199,25 @@ export class WinvContent {
 
         actor.connect('button-press-event', (_a, event) => {
             if (event.get_button() !== 1) return Clutter.EVENT_PROPAGATE;
+            if (!this._menu || !this._menu.isOpen) return Clutter.EVENT_PROPAGATE;
+            const menuActor = this._menu.actor;
+            if (!menuActor) return Clutter.EVENT_PROPAGATE;
+
             const [startX, startY] = event.get_coords();
-            const dragId = global.stage.connect('captured-event', (_s, ev) => {
+            const [winStartX, winStartY] = menuActor.get_position();
+
+            this._dragId = global.stage.connect('captured-event', (_s, ev) => {
                 const type = ev.type();
                 if (type === Clutter.EventType.MOTION) {
                     const [x, y] = ev.get_coords();
-                    this._nudgeMenu(x - startX, y - startY, startX, startY);
+                    this._nudgeMenu(x - startX, y - startY, winStartX, winStartY);
                     return Clutter.EVENT_STOP;
                 }
                 if (type === Clutter.EventType.BUTTON_RELEASE) {
-                    global.stage.disconnect(dragId);
+                    if (this._dragId) {
+                        global.stage.disconnect(this._dragId);
+                        this._dragId = null;
+                    }
                     return Clutter.EVENT_STOP;
                 }
                 return Clutter.EVENT_PROPAGATE;
@@ -208,11 +227,11 @@ export class WinvContent {
     }
 
     // Reposition the open menu, clamped to monitor. Guard against destroyed menu.
-    _nudgeMenu(dx, dy, startX, startY) {
+    _nudgeMenu(dx, dy, winStartX, winStartY) {
         if (!this._menu || !this._menu.isOpen) return;
         const actor = this._menu.actor;
         if (!actor) return;
-        let x = startX + dx, y = startY + dy;
+        let x = winStartX + dx, y = winStartY + dy;
         const monitor = Main.layoutManager.currentMonitor;
         const w = actor.width || 0, h = actor.height || 0;
         const M = 8;
@@ -222,6 +241,10 @@ export class WinvContent {
     }
 
     destroy() {
+        if (this._dragId) {
+            global.stage.disconnect(this._dragId);
+            this._dragId = null;
+        }
         if (this._clipboardView) { this._clipboardView.destroy(); this._clipboardView = null; }
         if (this._emojiView)     { this._emojiView.destroy();     this._emojiView = null; }
     }

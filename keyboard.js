@@ -9,6 +9,7 @@
 //   - otherwise use Shift+Insert
 
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 export class Keyboard {
@@ -44,10 +45,9 @@ export class Keyboard {
     }
 
     #notify(keyval, state) {
-        // notify_keyval expects microseconds; get_current_event_time() returns
-        // milliseconds, so multiply by 1000 (matches clipboard-indicator).
+        // notify_keyval expects microseconds; get_monotonic_time() returns them.
         this.#device.notify_keyval(
-            Clutter.get_current_event_time() * 1000,
+            GLib.get_monotonic_time(),
             keyval,
             state);
     }
