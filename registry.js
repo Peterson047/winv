@@ -103,7 +103,7 @@ export class Registry {
     // Synchronously ensure the cache directory exists.
     ensureDir() {
         if (!GLib.file_test(this.CACHE_DIR, FileTest.EXISTS))
-            GLib.mkdir_with_parents(this.CACHE_DIR, parseInt('0775', 8));
+            GLib.mkdir_with_parents(this.CACHE_DIR, parseInt('0700', 8));
     }
 
     imageFilePath(entry) {
@@ -120,13 +120,21 @@ export class Registry {
         await new Promise((resolve, reject) =>
             file.replace_async(null, false, Gio.FileCreateFlags.NONE,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
-                    const stream = obj.replace_finish(res);
-                    stream.write_bytes_async(entry.asBytes(), GLib.PRIORITY_DEFAULT, null,
-                        (w_obj, w_res) => {
-                            w_obj.write_bytes_finish(w_res);
-                            stream.close(null);
-                            resolve();
-                        });
+                    try {
+                        const stream = obj.replace_finish(res);
+                        stream.write_bytes_async(entry.asBytes(), GLib.PRIORITY_DEFAULT, null,
+                            (w_obj, w_res) => {
+                                try {
+                                    w_obj.write_bytes_finish(w_res);
+                                    stream.close(null);
+                                    resolve();
+                                } catch (e) {
+                                    reject(e);
+                                }
+                            });
+                    } catch (e) {
+                        reject(e);
+                    }
                 }));
     }
 
@@ -171,25 +179,38 @@ export class Registry {
         this.ensureDir();
         const bytes = new GLib.Bytes(json);
         const file = Gio.File.new_for_path(this.REGISTRY_PATH);
-        return new Promise(resolve =>
+        return new Promise((resolve, reject) =>
             file.replace_async(null, false, Gio.FileCreateFlags.NONE,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
-                    const stream = obj.replace_finish(res);
-                    stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null,
-                        (w_obj, w_res) => {
-                            w_obj.write_bytes_finish(w_res);
-                            stream.close(null);
-                            resolve();
-                        });
+                    try {
+                        const stream = obj.replace_finish(res);
+                        stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null,
+                            (w_obj, w_res) => {
+                                try {
+                                    w_obj.write_bytes_finish(w_res);
+                                    stream.close(null);
+                                    resolve();
+                                } catch (e) {
+                                    reject(e);
+                                }
+                            });
+                    } catch (e) {
+                        reject(e);
+                    }
                 }));
     }
 
     async read() {
         if (!GLib.file_test(this.REGISTRY_PATH, FileTest.EXISTS)) return [];
         const file = Gio.File.new_for_path(this.REGISTRY_PATH);
-        const [ok, contents] = await new Promise(resolve =>
-            file.load_contents_async(null, (obj, res) =>
-                resolve(obj.load_contents_finish(res))));
+        const [ok, contents] = await new Promise((resolve, reject) =>
+            file.load_contents_async(null, (obj, res) => {
+                try {
+                    resolve(obj.load_contents_finish(res));
+                } catch (e) {
+                    reject(e);
+                }
+            }));
         if (!ok) return [];
 
         const text = new TextDecoder().decode(contents);
@@ -229,9 +250,14 @@ export class Registry {
         if (!GLib.file_test(path, FileTest.EXISTS)) return [];
         const file = Gio.File.new_for_path(path);
         try {
-            const [ok, contents] = await new Promise(resolve =>
-                file.load_contents_async(null, (obj, res) =>
-                    resolve(obj.load_contents_finish(res))));
+            const [ok, contents] = await new Promise((resolve, reject) =>
+                file.load_contents_async(null, (obj, res) => {
+                    try {
+                        resolve(obj.load_contents_finish(res));
+                    } catch (e) {
+                        reject(e);
+                    }
+                }));
             if (!ok) return [];
             const text = new TextDecoder().decode(contents);
             return JSON.parse(text);
@@ -247,16 +273,24 @@ export class Registry {
         const bytes = new GLib.Bytes(json);
         const path = `${this.CACHE_DIR}/recent_emojis.json`;
         const file = Gio.File.new_for_path(path);
-        return new Promise(resolve =>
+        return new Promise((resolve, reject) =>
             file.replace_async(null, false, Gio.FileCreateFlags.NONE,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
-                    const stream = obj.replace_finish(res);
-                    stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null,
-                        (w_obj, w_res) => {
-                            w_obj.write_bytes_finish(w_res);
-                            stream.close(null);
-                            resolve();
-                        });
+                    try {
+                        const stream = obj.replace_finish(res);
+                        stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null,
+                            (w_obj, w_res) => {
+                                try {
+                                    w_obj.write_bytes_finish(w_res);
+                                    stream.close(null);
+                                    resolve();
+                                } catch (e) {
+                                    reject(e);
+                                }
+                            });
+                    } catch (e) {
+                        reject(e);
+                    }
                 }));
     }
 
