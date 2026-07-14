@@ -207,6 +207,7 @@ export class ClipboardManager {
             // Re-arm after a short tick so our own write's owner-changed is skipped.
             if (this._rearmTimeoutId) {
                 GLib.source_remove(this._rearmTimeoutId);
+                if (this._suppressCount > 0) this._suppressCount--;
             }
             this._rearmTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUPPRESS_REARM_MS, () => {
                 this._rearmTimeoutId = null;

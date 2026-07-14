@@ -35,7 +35,10 @@ export class ClipboardEntry {
 
         if (ClipboardEntry.isTextMimetype(mimetype)) {
             content = jsonEntry.contents;
-        } else {
+            const path = jsonEntry.contents;
+            if (!cacheDir || typeof path !== 'string' || !path.startsWith(cacheDir) || path.includes('..')) {
+                return null;
+            }
             const file = Gio.File.new_for_path(path);
             try {
                 content = await new Promise((resolve, reject) =>
@@ -160,9 +163,9 @@ export class Registry {
         const dir = Gio.File.new_for_path(this.CACHE_DIR);
         try {
             await new Promise((resolve, reject) => {
-                dir.make_directory_with_parents_async(GLib.PRIORITY_DEFAULT, null, (obj, res) => {
+                dir.make_directory_async(GLib.PRIORITY_DEFAULT, null, (obj, res) => {
                     try {
-                        obj.make_directory_with_parents_finish(res);
+                        obj.make_directory_finish(res);
                         resolve();
                     } catch (e) {
                         if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)) {
@@ -174,7 +177,14 @@ export class Registry {
                 });
             });
         } catch (e) {
-            console.error('WinV ensureDir error:', e);
+            // Fallback to synchronous make_directory_with_parents if async fails
+            try {
+                dir.make_directory_with_parents(null);
+            } catch (err) {
+                if (!err.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)) {
+                    console.error('WinV ensureDir error:', err);
+                }
+            }
         }
     }
 
