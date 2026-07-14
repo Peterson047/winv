@@ -41,6 +41,12 @@ export const MIMETYPE_NORMALIZE = {
 
 export const CLIPBOARD_TYPE_STR = 'CLIPBOARD'; // for St.ClipboardType.CLIPBOARD
 
+// GNOME's native schema that owns toggle-message-tray ('<Super>v' by default).
+// We free up any of our clipboard shortcut that collides with it so our popup
+// actually wins the Super+V grab, and restore the original value on disable.
+export const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
+export const MESSAGE_TRAY_KEY = 'toggle-message-tray';
+
 // UI sizing (logical px); final styling lives in stylesheet.css.
 // UI sizing (logical px); final styling lives in stylesheet.css.
 // Compact, like the Windows 11 flyout (~300px wide).

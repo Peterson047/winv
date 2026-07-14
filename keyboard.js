@@ -7,10 +7,22 @@
 //   - detect terminal input (InputContentPurpose.TERMINAL) and use
 //     Ctrl+Shift+Insert there
 //   - otherwise use Shift+Insert
+//
+// Compatibility (GNOME 46–50): Clutter renamed InputDeviceType to
+// VirtualDeviceType around GNOME 47. Both enums carry the keyboard member, so
+// we resolve the value once at module load by sniffing which enum is available
+// — no version-string branching. KeyState and the keyvals we use are stable
+// across the whole range.
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+// VirtualDeviceType is the modern name (GNOME 47+); InputDeviceType is the
+// legacy one (still present as an alias on 50). Prefer the new enum and fall
+// back so the same code runs on 46–50.
+const KEYBOARD_DEVICE_TYPE =
+    (Clutter.VirtualDeviceType ?? Clutter.InputDeviceType).KEYBOARD;
 
 export class Keyboard {
     #device;
@@ -20,7 +32,7 @@ export class Keyboard {
     constructor() {
         try {
             const seat = Clutter.get_default_backend().get_default_seat();
-            this.#device = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+            this.#device = seat.create_virtual_device(KEYBOARD_DEVICE_TYPE);
             this.#ready = true;
         } catch (e) {
             console.error('WinV: could not create virtual keyboard device:', e);

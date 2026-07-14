@@ -3,6 +3,10 @@
     "name": "WinV — Clipboard & Emoji (Windows-style)",
     "description": "Recria o clipboard inteligente do Windows 11 no GNOME: Win+V abre o histórico de itens copiados (texto e imagens), Win+E abre o seletor de emojis. Popups flutuantes abrem próximos ao cursor, com busca, fixar itens e limpar tudo. Acompanha o tema do shell (claro ou escuro).",
     "shell-version": [
+        "46",
+        "47",
+        "48",
+        "49",
         "50"
     ],
     "session-modes": [

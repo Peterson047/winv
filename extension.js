@@ -16,6 +16,7 @@ import { Registry } from './registry.js';
 import { ClipboardManager } from './clipboardManager.js';
 import { Keyboard } from './keyboard.js';
 import { WinVIndicator } from './panelIndicator.js';
+import { KeybindConflictResolver } from './keybindConflict.js';
 
 const TAB = { CLIPBOARD: 'clipboard', EMOJI: 'emoji' };
 
@@ -53,9 +54,17 @@ export default class WinVExtension extends Extension {
 
         // Keybindings
         this._boundKeys = [];
+        // Free up any system shortcut that collides with ours (GNOME binds
+        // Super+V to toggle-message-tray by default — same key we want).
+        this._keybindResolver = new KeybindConflictResolver();
         this._syncKeybindings();
         this._enableKeysChangedId = this._settings.connect(
             `changed::${Prefs.ENABLE_KEYBINDINGS}`, () => this._syncKeybindings());
+        // Re-resolve conflicts if the user remaps either shortcut in prefs.
+        this._clipKeyChangedId = this._settings.connect(
+            `changed::${Prefs.CLIPBOARD_KEYBINDING}`, () => this._onShortcutRemapped());
+        this._emojiKeyChangedId = this._settings.connect(
+            `changed::${Prefs.EMOJI_KEYBINDING}`, () => this._onShortcutRemapped());
     }
 
     disable() {
@@ -70,7 +79,21 @@ export default class WinVExtension extends Extension {
             this._settings.disconnect(this._enableKeysChangedId);
             this._enableKeysChangedId = null;
         }
+        if (this._clipKeyChangedId) {
+            this._settings.disconnect(this._clipKeyChangedId);
+            this._clipKeyChangedId = null;
+        }
+        if (this._emojiKeyChangedId) {
+            this._settings.disconnect(this._emojiKeyChangedId);
+            this._emojiKeyChangedId = null;
+        }
         this._unbindAll();
+        // Restore the shell's original bindings (e.g. put Super+V back on the
+        // message tray) before tearing down.
+        if (this._keybindResolver) {
+            this._keybindResolver.destroy();
+            this._keybindResolver = null;
+        }
         this._registry = null;
         this._settings = null;
     }
@@ -82,7 +105,34 @@ export default class WinVExtension extends Extension {
         if (this._settings.get_boolean(Prefs.ENABLE_KEYBINDINGS)) {
             this._bindKey(Prefs.CLIPBOARD_KEYBINDING, () => this.open(TAB.CLIPBOARD));
             this._bindKey(Prefs.EMOJI_KEYBINDING,     () => this.open(TAB.EMOJI));
+            // Free our shortcuts from any colliding system binding (Super+V →
+            // toggle-message-tray) so our popup actually gets the keypress.
+            this._resolveKeybindConflicts();
         }
+    }
+
+    // When a shortcut is remapped in prefs, re-resolve against system bindings:
+    // return the old accelerator to the tray and claim the new one.
+    _onShortcutRemapped() {
+        if (!this._settings.get_boolean(Prefs.ENABLE_KEYBINDINGS)) return;
+        this._resolveKeybindConflicts();
+    }
+
+    // Push both of our current accelerators to the resolver, which diffs against
+    // what it already owns and updates toggle-message-tray accordingly.
+    _resolveKeybindConflicts() {
+        if (!this._keybindResolver) return;
+        this._keybindResolver.sync([
+            this._getAccelerator(Prefs.CLIPBOARD_KEYBINDING),
+            this._getAccelerator(Prefs.EMOJI_KEYBINDING),
+        ].filter(Boolean));
+    }
+
+    // Read the first accelerator string for a keybinding pref (e.g. '<Super>v'),
+    // or null if unbound.
+    _getAccelerator(keyName) {
+        const accels = this._settings.get_strv(keyName);
+        return accels.length ? accels[0] : null;
     }
 
     _bindKey(keyName, handler) {
