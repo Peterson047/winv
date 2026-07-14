@@ -8,16 +8,19 @@ import GObject from 'gi://GObject';
 
 import { EMOJI_GRID_COLUMNS } from './constants.js';
 
-// Category icons (symbolic names available on GNOME 50).
+// Category icons. We use the Adwaita "emoji-*" symbolic set, which is shipped
+// since GNOME 46 and maps 1:1 to Unicode CLDR categories — so every category
+// has a guaranteed-present icon (the previous generic names like 'food-symbolic'
+// or 'flag-symbolic' don't exist outside GNOME 50).
 const CATEGORY_ICONS = {
-    'Smileys & Body':     'face-smile-symbolic',
-    'Animals & Nature':   'face-monkey-symbolic',
-    'Food & Drink':       'food-symbolic',
-    'Travel & Places':    'mark-location-symbolic',
-    'Activities':         'preferences-desktop-screensaver-symbolic',
-    'Objects':            'preferences-system-windows-symbolic',
+    'Smileys & Body':     'emoji-people-symbolic',
+    'Animals & Nature':   'emoji-nature-symbolic',
+    'Food & Drink':       'emoji-food-symbolic',
+    'Travel & Places':    'emoji-travel-symbolic',
+    'Activities':         'emoji-activities-symbolic',
+    'Objects':            'emoji-objects-symbolic',
     'Symbols':            'emoji-symbols-symbolic',
-    'Flags':              'flag-symbolic',
+    'Flags':              'emoji-flags-symbolic',
 };
 
 const EmojiCell = GObject.registerClass({
@@ -59,7 +62,9 @@ export class EmojiView {
         });
         box.add_child(this._recentRow);
 
-        // Category bar (also a drag handle).
+        // Category bar (also a drag handle). Wrapped in a horizontal ScrollView
+        // so the nine category buttons scroll instead of overflowing the popup
+        // when they don't all fit in 320px (GNOME 46 / small windows).
         const catBar = new St.BoxLayout({
             style_class: 'winv-category-bar winv-drag-handle',
             reactive: true,
@@ -67,7 +72,14 @@ export class EmojiView {
         if (this.makeDraggable) this.makeDraggable(catBar);
         this._catBar = catBar;
         this._buildCategoryBar();
-        box.add_child(catBar);
+        this._catScroll = new St.ScrollView({
+            style_class: 'winv-category-scroll',
+            overlay_scrollbars: true,
+            hscrollbar_policy: St.PolicyType.AUTOMATIC,
+            vscrollbar_policy: St.PolicyType.NEVER,
+        });
+        this._catScroll.add_child(catBar);
+        box.add_child(this._catScroll);
 
         // Scrollable grid area.
         this._scrollView = new St.ScrollView({

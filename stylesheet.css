@@ -215,7 +215,14 @@
     spacing: 2px;
 }
 
-/* ===== Emoji category bar ===== */
+/* ===== Emoji category bar =====
+ * Wrapped in a horizontal ScrollView: the nine category buttons scroll rather
+ * than overflow when the popup is narrow. The inner bar keeps a fixed natural
+ * width; the scroll clips it to the popup width. */
+.winv-category-scroll {
+    padding: 0;
+}
+
 .winv-category-bar {
     padding: 4px 6px;
     spacing: 2px;
