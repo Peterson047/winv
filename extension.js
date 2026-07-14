@@ -198,6 +198,16 @@ export default class WinVExtension extends Extension {
                 if (!ok) return;
                 const text = new TextDecoder().decode(bytes);
                 this._emojiData = JSON.parse(text);
+                
+                // Pre-process lowercase keywords for fast searching
+                for (const emoji of this._emojiData) {
+                    if (emoji.keywords) {
+                        emoji.lowerKeywords = emoji.keywords.map(k => k.toLowerCase());
+                    } else {
+                        emoji.lowerKeywords = [];
+                    }
+                }
+
                 if (this._indicator?._content?._emojiView) {
                     this._indicator._content._emojiView._all = this._emojiData;
                     this._indicator._content._emojiView._populate();
@@ -246,7 +256,7 @@ export default class WinVExtension extends Extension {
     _schedulePaste(fn) {
         if (this._pasteTimeoutId)
             GLib.source_remove(this._pasteTimeoutId);
-        this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+        this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
             this._pasteTimeoutId = null;
             // Guard: disable() may have run during the delay.
             if (!this._settings) return GLib.SOURCE_REMOVE;

@@ -20,6 +20,7 @@ import { CLIPBOARD_MIMETYPES, MIMETYPE_NORMALIZE } from './constants.js';
 
 const SUPPRESS_REARM_MS = 150;
 const SAVE_DEBOUNCE_MS = 400;
+const MAX_PAYLOAD_SIZE = 10 * 1024 * 1024; // 10MB limit
 
 const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
@@ -38,6 +39,7 @@ export class ClipboardManager {
         // Reentrancy guard: when WE write to the clipboard (item reselected),
         // owner-changed fires again — skip it.
         this._suppressCount = 0;
+        this._rearmTimeoutId = null;
 
         this._listeners = [];
     }
@@ -80,6 +82,10 @@ export class ClipboardManager {
             this._selection.disconnect(this._selectionOwnerChangedId);
             this._selectionOwnerChangedId = null;
         }
+        if (this._rearmTimeoutId) {
+            GLib.source_remove(this._rearmTimeoutId);
+            this._rearmTimeoutId = null;
+        }
         this._selection = null;
         this._flushSaveNow();
     }
@@ -91,6 +97,8 @@ export class ClipboardManager {
         
         // Security check: Ignore password managers (e.g. 1Password, KeePassXC)
         if (availableMimes.includes('x-kde-passwordManagerHint') ||
+            availableMimes.includes('application/x-keepass-clipboard') ||
+            availableMimes.includes('x-mac-creds') ||
             availableMimes.includes('secret')) {
             return null;
         }
@@ -109,6 +117,13 @@ export class ClipboardManager {
         const result = await new Promise(resolve =>
             this.clipboard.get_content(CLIPBOARD_TYPE, targetMime, (_cb, bytes) => {
                 if (bytes === null || bytes.get_size() === 0) { resolve(null); return; }
+                
+                // DoS protection check: Prevent gigantic buffers from freezing the Shell when calculating hashes
+                if (bytes.get_size() > MAX_PAYLOAD_SIZE) {
+                    console.warn(`WinV: Ignorando clipboard com mais de ${MAX_PAYLOAD_SIZE} bytes (proteção DoS).`);
+                    resolve(null);
+                    return;
+                }
 
                 // GNOME mangles UTF8_STRING on 2nd+ copy; normalize it back.
                 // (gnome-shell#8233)
@@ -190,7 +205,11 @@ export class ClipboardManager {
             }
         } finally {
             // Re-arm after a short tick so our own write's owner-changed is skipped.
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUPPRESS_REARM_MS, () => {
+            if (this._rearmTimeoutId) {
+                GLib.source_remove(this._rearmTimeoutId);
+            }
+            this._rearmTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUPPRESS_REARM_MS, () => {
+                this._rearmTimeoutId = null;
                 if (this._suppressCount > 0) this._suppressCount--;
                 return GLib.SOURCE_REMOVE;
             });

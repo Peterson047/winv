@@ -145,7 +145,7 @@ export class EmojiView {
         const q = this._query.trim().toLowerCase();
         if (q) {
             return this._all.filter(e =>
-                e.keywords.some(k => k.toLowerCase().includes(q)));
+                e.lowerKeywords && e.lowerKeywords.some(k => k.includes(q)));
         }
         if (this._category) return this._all.filter(e => e.category === this._category);
         return this._all;
