@@ -26,9 +26,15 @@ export default class WinVExtension extends Extension {
         this._registry = new Registry({ settings: this._settings, uuid: this.uuid });
         this._manager = new ClipboardManager({ settings: this._settings, registry: this._registry });
         this._keyboard = new Keyboard();
+        this._pasteTimeoutId = null;
 
         // Load persisted history + start listening for clipboard changes.
-        this._manager.init().then(() => this._manager.start())
+        // Capture the manager locally: disable() may run before init() resolves,
+        // in which case start() must not touch a nulled _manager (it would throw
+        // a noisy TypeError in the journal on every fast enable/disable).
+        const manager = this._manager;
+        manager.init()
+            .then(() => { if (manager === this._manager && !manager._destroyed) manager.start(); })
             .catch(e => console.error('WinV init:', e));
 
         // Preload emoji data so the emoji tab opens fast.
@@ -75,6 +81,11 @@ export default class WinVExtension extends Extension {
         }
         if (this._manager)  { this._manager.stop();     this._manager = null; }
         if (this._keyboard) { this._keyboard.destroy(); this._keyboard = null; }
+        // Cancel any pending auto-paste so it doesn't fire on torn-down state.
+        if (this._pasteTimeoutId) {
+            GLib.source_remove(this._pasteTimeoutId);
+            this._pasteTimeoutId = null;
+        }
         if (this._enableKeysChangedId) {
             this._settings.disconnect(this._enableKeysChangedId);
             this._enableKeysChangedId = null;
@@ -219,30 +230,41 @@ export default class WinVExtension extends Extension {
         // returns to the target app. Then paste after a short delay (matches
         // the clipboard-indicator timing of ~50ms).
         if (closePopup) closePopup();
-        if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
-                this.pasteIntoFocus();
-                return GLib.SOURCE_REMOVE;
-            });
-        }
+        if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT))
+            this._schedulePaste(() => this.pasteIntoFocus());
     }
 
     commitEmoji(char, closePopup) {
         if (closePopup) closePopup();
         if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            this._schedulePaste(() => {
                 try {
                     Main.inputMethod.commit(char);
                 } catch (e) {
                     console.error('WinV: commit emoji failed, falling back to clipboard:', e);
                     this.copyAndPaste(char, null);
                 }
-                return GLib.SOURCE_REMOVE;
             });
         } else {
             const clipboard = St.Clipboard.get_default();
             clipboard.set_text(St.ClipboardType.CLIPBOARD, char);
         }
+    }
+
+    // Schedule a paste/commit shortly after closing the popup (gives the target
+    // app time to regain focus). Tracked so disable() can cancel a pending paste
+    // instead of firing it on a torn-down extension (which would null-deref
+    // _settings/_keyboard). One slot — a new paste cancels any pending one.
+    _schedulePaste(fn) {
+        if (this._pasteTimeoutId)
+            GLib.source_remove(this._pasteTimeoutId);
+        this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            this._pasteTimeoutId = null;
+            // Guard: disable() may have run during the delay.
+            if (!this._settings) return GLib.SOURCE_REMOVE;
+            fn();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     pasteIntoFocus() {

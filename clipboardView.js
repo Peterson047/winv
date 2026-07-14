@@ -157,6 +157,8 @@ export class ClipboardView {
         this._onlyFavorites = false;
         this._rows = new Map();
         this._dialogs = new DialogManager();
+        this._destroyed = false;
+        this._pasteTimeoutId = null;
 
         this._disconnectManager = this.manager.connect(() => {
             if (this.actor && this.actor.visible) {
@@ -299,12 +301,17 @@ export class ClipboardView {
     _onSelected(entry) {
         this.manager.selectItem(entry)
             .then(() => {
+                // Guard: the view may have been destroyed (popup closed +
+                // extension disabled) while selectItem() was awaiting.
+                if (this._destroyed) return;
                 // Close FIRST so the modal grab is released and focus returns
                 // to the target app before we synthesize Ctrl+V.
                 this.onClosed();
                 if (this.settings.get_boolean('paste-on-select')) {
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
-                        this.extension.pasteIntoFocus();
+                    this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+                        this._pasteTimeoutId = null;
+                        if (!this._destroyed)
+                            this.extension.pasteIntoFocus();
                         return GLib.SOURCE_REMOVE;
                     });
                 }
@@ -333,6 +340,11 @@ export class ClipboardView {
     }
 
     destroy() {
+        this._destroyed = true;
+        if (this._pasteTimeoutId) {
+            GLib.source_remove(this._pasteTimeoutId);
+            this._pasteTimeoutId = null;
+        }
         if (this._disconnectManager) {
             this._disconnectManager();
             this._disconnectManager = null;

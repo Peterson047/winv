@@ -56,10 +56,13 @@ export class DialogManager {
     }
 
     destroy() {
+        // Null the reference BEFORE destroying so the async 'closed' handler
+        // (emitted after the fade animation) becomes a no-op instead of calling
+        // destroy() on an already-disposed dialog ("object has been disposed").
         if (this.#open) {
-            this.#open.close();
-            this.#open.destroy();
+            const dlg = this.#open;
             this.#open = null;
+            dlg.destroy();
         }
     }
 }

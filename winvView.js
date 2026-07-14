@@ -123,7 +123,10 @@ export class WinvContent {
                     this._clipboardView.refresh();
                 }
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
-                    if (this._activeTab === TAB_EMOJI)
+                    // The extension may be disabled within this 60ms window; avoid
+                    // focusing a destroyed search entry (Clutter critical).
+                    if (this._activeTab === TAB_EMOJI &&
+                        this._search && !this._search.is_destroyed?.())
                         global.stage.set_key_focus(this._search);
                     return GLib.SOURCE_REMOVE;
                 });

@@ -110,7 +110,10 @@ export class ClipboardManager {
         if (this._destroyed || this._suppressNext) return;
 
         const entry = await this._readContent();
-        if (!entry) return;
+        // The clipboard read is async; disable()/stop() may have run while we
+        // awaited. Re-check before mutating state or scheduling a save, otherwise
+        // we'd enqueue a debounced write that stop() has already passed (leak).
+        if (this._destroyed || !entry) return;
 
         // Optional whitespace trim for text.
         if (entry.isText() && this.settings.get_boolean('strip-text')) {
@@ -221,10 +224,11 @@ export class ClipboardManager {
 
     // Debounced persistence: coalesce rapid bursts of copies.
     _scheduleSave() {
-        if (this._saveTimeoutId) return;
+        if (this._destroyed || this._saveTimeoutId) return;
         this._saveTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
             this._saveTimeoutId = null;
-            this.registry.write(this.entries).catch(e => console.error('WinV save:', e));
+            if (!this._destroyed)
+                this.registry.write(this.entries).catch(e => console.error('WinV save:', e));
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -234,6 +238,7 @@ export class ClipboardManager {
             GLib.source_remove(this._saveTimeoutId);
             this._saveTimeoutId = null;
         }
-        this.registry.write(this.entries).catch(e => console.error('WinV save:', e));
+        if (!this._destroyed)
+            this.registry.write(this.entries).catch(e => console.error('WinV save:', e));
     }
 }
