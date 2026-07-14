@@ -49,8 +49,10 @@ export class DialogManager {
         const dlg = new ConfirmDialog(title, message, okLabel, cancelLabel, callback);
         this.#open = dlg;
         dlg.connect('closed', () => {
-            dlg.destroy();
-            this.#open = null;
+            if (this.#open === dlg) {
+                this.#open = null;
+                dlg.destroy();
+            }
         });
         dlg.open();
     }

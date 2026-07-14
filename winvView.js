@@ -136,9 +136,12 @@ export class WinvContent {
                         });
                     }
                 }
-            } else if (this._openPrefsOnClose) {
-                this._openPrefsOnClose = false;
-                this.extension.openPreferences();
+            } else {
+                this._cancelDrag();
+                if (this._openPrefsOnClose) {
+                    this._openPrefsOnClose = false;
+                    this.extension.openPreferences();
+                }
             }
         });
     }
@@ -236,10 +239,7 @@ export class WinvContent {
                     return Clutter.EVENT_STOP;
                 }
                 if (type === Clutter.EventType.BUTTON_RELEASE) {
-                    if (this._dragId) {
-                        global.stage.disconnect(this._dragId);
-                        this._dragId = null;
-                    }
+                    this._cancelDrag();
                     return Clutter.EVENT_STOP;
                 }
                 return Clutter.EVENT_PROPAGATE;
@@ -262,11 +262,15 @@ export class WinvContent {
         try { actor.set_position(x, y); } catch (e) { /* mid-teardown */ }
     }
 
-    destroy() {
+    _cancelDrag() {
         if (this._dragId) {
             global.stage.disconnect(this._dragId);
             this._dragId = null;
         }
+    }
+
+    destroy() {
+        this._cancelDrag();
         if (this._clipboardView) { this._clipboardView.destroy(); this._clipboardView = null; }
         if (this._emojiView)     { this._emojiView.destroy();     this._emojiView = null; }
     }

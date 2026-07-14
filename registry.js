@@ -29,7 +29,7 @@ export class ClipboardEntry {
     }
 
     // Reconstruct from a JSON record (text inline, image read from disk).
-    static async fromJSON(jsonEntry) {
+    static async fromJSON(jsonEntry, cacheDir) {
         const mimetype = jsonEntry.mimetype || 'text/plain;charset=utf-8';
         const favorite = !!jsonEntry.favorite;
         let content;
@@ -38,8 +38,12 @@ export class ClipboardEntry {
             content = jsonEntry.contents;
         } else {
             // image: contents is the absolute path to the blob
-            if (!GLib.file_test(jsonEntry.contents, FileTest.EXISTS)) return null;
-            const file = Gio.File.new_for_path(jsonEntry.contents);
+            const path = jsonEntry.contents;
+            if (!cacheDir || typeof path !== 'string' || !path.startsWith(cacheDir) || path.includes('..')) {
+                return null;
+            }
+            if (!GLib.file_test(path, FileTest.EXISTS)) return null;
+            const file = Gio.File.new_for_path(path);
             content = await new Promise((resolve, reject) =>
                 file.load_contents_async(null, (obj, res) => {
                     const [ok, c] = obj.load_contents_finish(res);
@@ -110,22 +114,33 @@ export class ClipboardEntry {
 }
 
 // Trim a history list to at most `maxSize` non-favorite entries, never dropping
-// favorites. Single pass from the end (oldest) so it stays O(n) instead of the
-// previous filter-in-while-loop O(n²). Returns the dropped entries so the caller
-// can delete their image blobs. Mutates `entries` in place.
+// favorites. Mutates `entries` in place efficiently without quadratic splice costs.
+// Returns the dropped entries so the caller can delete their image blobs.
 export function trimHistory(entries, maxSize) {
-    const dropped = [];
-    // Count current non-favorites.
     let nonFavoriteCount = 0;
     for (const e of entries) if (!e.isFavorite()) nonFavoriteCount++;
-    if (nonFavoriteCount <= maxSize) return dropped;
-    // Walk from the oldest (end); splice non-favorites until within budget.
-    for (let i = entries.length - 1; i >= 0 && nonFavoriteCount > maxSize; i--) {
-        if (entries[i].isFavorite()) continue;
-        dropped.push(entries[i]);
-        entries.splice(i, 1);
-        nonFavoriteCount--;
+    if (nonFavoriteCount <= maxSize) return [];
+
+    const dropped = [];
+    const kept = [];
+    let toDrop = nonFavoriteCount - maxSize;
+
+    // Walk backwards so we drop the oldest non-favorites first
+    for (let i = entries.length - 1; i >= 0; i--) {
+        const e = entries[i];
+        if (!e.isFavorite() && toDrop > 0) {
+            dropped.push(e);
+            toDrop--;
+        } else {
+            kept.push(e);
+        }
     }
+    
+    // Kept elements were collected backwards, so reverse them and mutate original array
+    kept.reverse();
+    entries.length = 0;
+    for (const e of kept) entries.push(e);
+    
     return dropped;
 }
 
@@ -138,6 +153,7 @@ export class Registry {
         this.CACHE_DIR = `${GLib.get_user_cache_dir()}/${this.uuid}`;
         this.REGISTRY_PATH = `${this.CACHE_DIR}/registry.txt`;
         this.BACKUP_PATH = `${this.REGISTRY_PATH}~`;
+        this._writeLock = Promise.resolve();
     }
 
     // Synchronously ensure the cache directory exists.
@@ -184,35 +200,54 @@ export class Registry {
         if (!GLib.file_test(path, FileTest.EXISTS)) return;
         try {
             const file = Gio.File.new_for_path(path);
-            await file.delete_async(GLib.PRIORITY_DEFAULT, null);
+            await new Promise((resolve, reject) => {
+                file.delete_async(GLib.PRIORITY_DEFAULT, null, (obj, res) => {
+                    try {
+                        obj.delete_finish(res);
+                        resolve();
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            });
         } catch (e) {
             console.error('WinV deleteEntryFile:', e);
         }
     }
 
     async write(entries) {
-        this.ensureDir();
-        const serializable = [];
-        for (const entry of entries) {
-            const item = {
-                favorite: entry.isFavorite(),
-                mimetype: entry.mimetype(),
-                timestamp: entry.getTimestamp(),
-            };
-            if (entry.isText()) {
-                item.contents = entry.getStringValue();
-            } else if (entry.isImage()) {
-                if (this.settings.get_boolean('cache-images')) {
-                    await this.writeEntryFile(entry);
-                    item.contents = this.imageFilePath(entry);
-                } else {
-                    continue; // skip images entirely if disabled
+        // Queue the write behind any currently ongoing write to prevent file corruption
+        const previousLock = this._writeLock;
+        let resolveLock;
+        this._writeLock = new Promise(resolve => { resolveLock = resolve; });
+        
+        try {
+            await previousLock;
+            this.ensureDir();
+            const serializable = [];
+            for (const entry of entries) {
+                const item = {
+                    favorite: entry.isFavorite(),
+                    mimetype: entry.mimetype(),
+                    timestamp: entry.getTimestamp(),
+                };
+                if (entry.isText()) {
+                    item.contents = entry.getStringValue();
+                } else if (entry.isImage()) {
+                    if (this.settings.get_boolean('cache-images')) {
+                        await this.writeEntryFile(entry);
+                        item.contents = this.imageFilePath(entry);
+                    } else {
+                        continue; // skip images entirely if disabled
+                    }
                 }
+                if (entry.getTag()) item.tag = entry.getTag();
+                serializable.push(item);
             }
-            if (entry.getTag()) item.tag = entry.getTag();
-            serializable.push(item);
+            await this._writeJson(JSON.stringify(serializable));
+        } finally {
+            resolveLock();
         }
-        await this._writeJson(JSON.stringify(serializable));
     }
 
     _writeJson(json) {
@@ -266,7 +301,7 @@ export class Registry {
 
         const entries = (await Promise.all(registry.map(async item => {
             try {
-                return await ClipboardEntry.fromJSON(item);
+                return await ClipboardEntry.fromJSON(item, this.CACHE_DIR);
             } catch (e) {
                 console.error('WinV: error loading registry entry:', e);
                 return null;
