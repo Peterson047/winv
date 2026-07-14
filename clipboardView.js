@@ -285,7 +285,7 @@ export class ClipboardView {
         for (const [entry, row] of this._rows) {
             let match = true;
             if (this._onlyFavorites && !entry.isFavorite()) match = false;
-            if (match && q) match = entry.getStringValue().toLowerCase().includes(q);
+            if (match && q) match = entry.getLowerStringValue().includes(q);
             row.visible = match;
             if (match) visible++;
         }

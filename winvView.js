@@ -124,14 +124,18 @@ export class WinvContent {
                 if (this._clipboardView) {
                     this._clipboardView.refresh();
                 }
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 60, () => {
-                    // The extension may be disabled within this 60ms window; avoid
-                    // focusing a destroyed search entry (Clutter critical).
-                    if (this._activeTab === TAB_EMOJI &&
-                        this._search && !this._search.is_destroyed?.())
+                if (this._activeTab === TAB_EMOJI && this._search && !this._search.is_destroyed?.()) {
+                    if (this._search.mapped) {
                         global.stage.set_key_focus(this._search);
-                    return GLib.SOURCE_REMOVE;
-                });
+                    } else {
+                        const mapId = this._search.connect('notify::mapped', () => {
+                            if (this._search.mapped && !this._search.is_destroyed?.()) {
+                                global.stage.set_key_focus(this._search);
+                                this._search.disconnect(mapId);
+                            }
+                        });
+                    }
+                }
             } else if (this._openPrefsOnClose) {
                 this._openPrefsOnClose = false;
                 this.extension.openPreferences();

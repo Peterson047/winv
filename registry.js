@@ -17,7 +17,7 @@ const FileTest = GLib.FileTest;
 
 export class ClipboardEntry {
     #mimetype;
-    #bytes;       // Uint8Array
+    #content;     // String for text, Uint8Array for image
     #favorite;
     #tag;
     #timestamp;   // epoch ms
@@ -32,38 +32,48 @@ export class ClipboardEntry {
     static async fromJSON(jsonEntry) {
         const mimetype = jsonEntry.mimetype || 'text/plain;charset=utf-8';
         const favorite = !!jsonEntry.favorite;
-        let bytes;
+        let content;
 
         if (ClipboardEntry.isTextMimetype(mimetype)) {
-            bytes = new TextEncoder().encode(jsonEntry.contents);
+            content = jsonEntry.contents;
         } else {
             // image: contents is the absolute path to the blob
             if (!GLib.file_test(jsonEntry.contents, FileTest.EXISTS)) return null;
             const file = Gio.File.new_for_path(jsonEntry.contents);
-            bytes = await new Promise((resolve, reject) =>
+            content = await new Promise((resolve, reject) =>
                 file.load_contents_async(null, (obj, res) => {
-                    const [ok, contents] = obj.load_contents_finish(res);
-                    if (ok) resolve(contents);
+                    const [ok, c] = obj.load_contents_finish(res);
+                    if (ok) resolve(c);
                     else reject(new Error('WinV: failed reading image blob'));
                 }));
         }
 
-        const entry = new ClipboardEntry(mimetype, bytes, favorite);
+        const entry = new ClipboardEntry(mimetype, content, favorite);
         if (jsonEntry.tag) entry.setTag(jsonEntry.tag);
         if (jsonEntry.timestamp) entry.#timestamp = jsonEntry.timestamp;
         return entry;
     }
 
-    constructor(mimetype, bytes, favorite = false) {
+    constructor(mimetype, content, favorite = false) {
         this.#mimetype = mimetype;
-        // Store a copy so the caller's buffer mutations can't corrupt us.
-        this.#bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        // Store a copy of array so the caller's buffer mutations can't corrupt us, 
+        // or just keep the string if it's text.
+        this.#content = (content instanceof Uint8Array || typeof content === 'string') 
+            ? content : new Uint8Array(content);
         this.#favorite = favorite;
         this.#timestamp = Date.now();
+        
+        if (this.isText()) {
+            this._stringValue = this.#content;
+            this._lowerStringValue = this._stringValue.toLowerCase();
+        }
     }
 
     mimetype() { return this.#mimetype; }
-    asBytes() { return GLib.Bytes.new(this.#bytes); }
+    asBytes() {
+        if (this.isText()) return GLib.Bytes.new(new TextEncoder().encode(this.#content));
+        return GLib.Bytes.new(this.#content);
+    }
     isFavorite() { return this.#favorite; }
     set favorite(v) { this.#favorite = !!v; }
     isText() { return ClipboardEntry.isTextMimetype(this.#mimetype); }
@@ -73,15 +83,16 @@ export class ClipboardEntry {
     getTimestamp() { return this.#timestamp || 0; }
     setTimestamp(ts) { this.#timestamp = ts; }
 
-    // Human-readable text (for search + row preview). Memoized because the
-    // clipboard filter calls this on every entry for every search keystroke, and
-    // for images it would otherwise re-hash (SHA256) on each call.
     getStringValue() {
+        if (this.isText()) return this._stringValue;
         if (this._stringValue === undefined)
-            this._stringValue = this.isImage()
-                ? `[Image ${this.hash()}]`
-                : new TextDecoder().decode(this.#bytes);
+            this._stringValue = `[Image ${this.hash()}]`;
         return this._stringValue;
+    }
+    
+    getLowerStringValue() {
+        if (this.isText()) return this._lowerStringValue;
+        return this.getStringValue().toLowerCase();
     }
 
     // Content hash for dedup (SHA256 hex). Stable across runs. Memoized: the
@@ -147,7 +158,7 @@ export class Registry {
         if (GLib.file_test(path, FileTest.EXISTS)) return; // dedupe
         const file = Gio.File.new_for_path(path);
         await new Promise((resolve, reject) =>
-            file.replace_async(null, false, Gio.FileCreateFlags.NONE,
+            file.replace_async(null, false, Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
                     try {
                         const stream = obj.replace_finish(res);
@@ -209,7 +220,7 @@ export class Registry {
         const bytes = new GLib.Bytes(json);
         const file = Gio.File.new_for_path(this.REGISTRY_PATH);
         return new Promise((resolve, reject) =>
-            file.replace_async(null, false, Gio.FileCreateFlags.NONE,
+            file.replace_async(null, false, Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
                     try {
                         const stream = obj.replace_finish(res);
@@ -264,7 +275,11 @@ export class Registry {
 
         // Enforce history-size, never dropping favorites.
         const maxSize = this.settings.get_int('history-size');
-        trimHistory(entries, maxSize);
+        const dropped = trimHistory(entries, maxSize);
+        for (const e of dropped) {
+            if (e.isImage())
+                this.deleteEntryFile(e).catch(() => {});
+        }
         return entries;
     }
 
@@ -297,7 +312,7 @@ export class Registry {
         const path = `${this.CACHE_DIR}/recent_emojis.json`;
         const file = Gio.File.new_for_path(path);
         return new Promise((resolve, reject) =>
-            file.replace_async(null, false, Gio.FileCreateFlags.NONE,
+            file.replace_async(null, false, Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION,
                 GLib.PRIORITY_DEFAULT, null, (obj, res) => {
                     try {
                         const stream = obj.replace_finish(res);

@@ -37,7 +37,7 @@ export class ClipboardManager {
 
         // Reentrancy guard: when WE write to the clipboard (item reselected),
         // owner-changed fires again — skip it.
-        this._suppressNext = false;
+        this._suppressCount = 0;
 
         this._listeners = [];
     }
@@ -84,33 +84,58 @@ export class ClipboardManager {
         this._flushSaveNow();
     }
 
-    // Read the current clipboard content, trying each mimetype in order.
+    // Read the current clipboard content, testing only available mimetypes.
     async _readContent() {
-        for (let type of CLIPBOARD_MIMETYPES) {
-            const result = await new Promise(resolve =>
-                this.clipboard.get_content(CLIPBOARD_TYPE, type, (_cb, bytes) => {
-                    if (bytes === null || bytes.get_size() === 0) { resolve(null); return; }
-
-                    // GNOME mangles UTF8_STRING on 2nd+ copy; normalize it back.
-                    // (gnome-shell#8233)
-                    if (MIMETYPE_NORMALIZE[type]) type = MIMETYPE_NORMALIZE[type];
-
-                    resolve(new ClipboardEntry(type, bytes.get_data(), false));
-                }));
-
-            if (!result) continue;
-
-            // Honor the cache-images setting: ignore image copies if disabled.
-            if (result.isImage() && !this.settings.get_boolean('cache-images'))
-                return null;
-
-            return result;
+        const availableMimes = this.clipboard.get_mimetypes(CLIPBOARD_TYPE);
+        if (!availableMimes || availableMimes.length === 0) return null;
+        
+        // Security check: Ignore password managers (e.g. 1Password, KeePassXC)
+        if (availableMimes.includes('x-kde-passwordManagerHint') ||
+            availableMimes.includes('secret')) {
+            return null;
         }
-        return null;
+
+        // Find the first available mimetype that matches our accepted list
+        let targetMime = null;
+        for (let type of CLIPBOARD_MIMETYPES) {
+            if (availableMimes.includes(type)) {
+                targetMime = type;
+                break;
+            }
+        }
+        
+        if (!targetMime) return null;
+
+        const result = await new Promise(resolve =>
+            this.clipboard.get_content(CLIPBOARD_TYPE, targetMime, (_cb, bytes) => {
+                if (bytes === null || bytes.get_size() === 0) { resolve(null); return; }
+
+                // GNOME mangles UTF8_STRING on 2nd+ copy; normalize it back.
+                // (gnome-shell#8233)
+                if (MIMETYPE_NORMALIZE[targetMime]) targetMime = MIMETYPE_NORMALIZE[targetMime];
+                
+                // Parse strings early to save memory/cycles
+                let content;
+                if (ClipboardEntry.isTextMimetype(targetMime)) {
+                    content = new TextDecoder().decode(bytes.get_data());
+                } else {
+                    content = bytes.get_data();
+                }
+
+                resolve(new ClipboardEntry(targetMime, content, false));
+            }));
+
+        if (!result) return null;
+
+        // Honor the cache-images setting: ignore image copies if disabled.
+        if (result.isImage() && !this.settings.get_boolean('cache-images'))
+            return null;
+
+        return result;
     }
 
     async _onClipboardChanged() {
-        if (this._destroyed || this._suppressNext) return;
+        if (this._destroyed || this._suppressCount > 0) return;
 
         const entry = await this._readContent();
         // The clipboard read is async; disable()/stop() may have run while we
@@ -155,10 +180,8 @@ export class ClipboardManager {
         this._emitChanged();
     }
 
-    // Public: the UI calls this when the user re-selects an old item.
-    // Writes it back to the clipboard (and moves it to top if configured).
     selectItem(entry) {
-        this._suppressNext = true;
+        this._suppressCount++;
         try {
             if (entry.isText()) {
                 this.clipboard.set_text(CLIPBOARD_TYPE, entry.getStringValue());
@@ -168,7 +191,7 @@ export class ClipboardManager {
         } finally {
             // Re-arm after a short tick so our own write's owner-changed is skipped.
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUPPRESS_REARM_MS, () => {
-                this._suppressNext = false;
+                if (this._suppressCount > 0) this._suppressCount--;
                 return GLib.SOURCE_REMOVE;
             });
         }
