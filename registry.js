@@ -10,8 +10,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
-const FileQueryInfoFlags = Gio.FileQueryInfoFlags;
-const FileTest = GLib.FileTest;
+
 
 // ---- ClipboardEntry: one item of history ------------------------------
 
@@ -37,19 +36,21 @@ export class ClipboardEntry {
         if (ClipboardEntry.isTextMimetype(mimetype)) {
             content = jsonEntry.contents;
         } else {
-            // image: contents is the absolute path to the blob
-            const path = jsonEntry.contents;
-            if (!cacheDir || typeof path !== 'string' || !path.startsWith(cacheDir) || path.includes('..')) {
+            const file = Gio.File.new_for_path(path);
+            try {
+                content = await new Promise((resolve, reject) =>
+                    file.load_contents_async(null, (obj, res) => {
+                        try {
+                            const [ok, c] = obj.load_contents_finish(res);
+                            if (ok) resolve(c);
+                            else reject(new Error('WinV: failed reading image blob'));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    }));
+            } catch (e) {
                 return null;
             }
-            if (!GLib.file_test(path, FileTest.EXISTS)) return null;
-            const file = Gio.File.new_for_path(path);
-            content = await new Promise((resolve, reject) =>
-                file.load_contents_async(null, (obj, res) => {
-                    const [ok, c] = obj.load_contents_finish(res);
-                    if (ok) resolve(c);
-                    else reject(new Error('WinV: failed reading image blob'));
-                }));
         }
 
         const entry = new ClipboardEntry(mimetype, content, favorite);
@@ -60,9 +61,8 @@ export class ClipboardEntry {
 
     constructor(mimetype, content, favorite = false) {
         this.#mimetype = mimetype;
-        // Store a copy of array so the caller's buffer mutations can't corrupt us, 
-        // or just keep the string if it's text.
-        this.#content = (content instanceof Uint8Array || typeof content === 'string') 
+        // Store a copy of array so the caller's buffer mutations or GBytes memory GC can't corrupt us.
+        this.#content = (typeof content === 'string') 
             ? content : new Uint8Array(content);
         this.#favorite = favorite;
         this.#timestamp = Date.now();
@@ -152,14 +152,30 @@ export class Registry {
         this.settings = settings;
         this.CACHE_DIR = `${GLib.get_user_cache_dir()}/${this.uuid}`;
         this.REGISTRY_PATH = `${this.CACHE_DIR}/registry.txt`;
-        this.BACKUP_PATH = `${this.REGISTRY_PATH}~`;
         this._writeLock = Promise.resolve();
     }
 
-    // Synchronously ensure the cache directory exists.
-    ensureDir() {
-        if (!GLib.file_test(this.CACHE_DIR, FileTest.EXISTS))
-            GLib.mkdir_with_parents(this.CACHE_DIR, parseInt('0700', 8));
+    // Asynchronously ensure the cache directory exists.
+    async ensureDir() {
+        const dir = Gio.File.new_for_path(this.CACHE_DIR);
+        try {
+            await new Promise((resolve, reject) => {
+                dir.make_directory_with_parents_async(GLib.PRIORITY_DEFAULT, null, (obj, res) => {
+                    try {
+                        obj.make_directory_with_parents_finish(res);
+                        resolve();
+                    } catch (e) {
+                        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)) {
+                            resolve(); // directory already exists, ignore
+                        } else {
+                            reject(e);
+                        }
+                    }
+                });
+            });
+        } catch (e) {
+            console.error('WinV ensureDir error:', e);
+        }
     }
 
     imageFilePath(entry) {
@@ -169,35 +185,47 @@ export class Registry {
 
     async writeEntryFile(entry) {
         if (!entry.isImage()) return;
-        this.ensureDir();
+        await this.ensureDir();
         const path = this.imageFilePath(entry);
-        if (GLib.file_test(path, FileTest.EXISTS)) return; // dedupe
         const file = Gio.File.new_for_path(path);
-        await new Promise((resolve, reject) =>
-            file.replace_async(null, false, Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION,
-                GLib.PRIORITY_DEFAULT, null, (obj, res) => {
+        
+        try {
+            await new Promise((resolve, reject) => {
+                file.create_async(Gio.FileCreateFlags.PRIVATE, GLib.PRIORITY_DEFAULT, null, (obj, res) => {
                     try {
-                        const stream = obj.replace_finish(res);
-                        stream.write_bytes_async(entry.asBytes(), GLib.PRIORITY_DEFAULT, null,
-                            (w_obj, w_res) => {
-                                try {
-                                    w_obj.write_bytes_finish(w_res);
-                                    stream.close(null);
-                                    resolve();
-                                } catch (e) {
-                                    reject(e);
-                                }
-                            });
+                        const stream = obj.create_finish(res);
+                        stream.write_bytes_async(entry.asBytes(), GLib.PRIORITY_DEFAULT, null, (w_obj, w_res) => {
+                            try {
+                                w_obj.write_bytes_finish(w_res);
+                                stream.close_async(GLib.PRIORITY_DEFAULT, null, (c_obj, c_res) => {
+                                    try {
+                                        c_obj.close_finish(c_res);
+                                        resolve();
+                                    } catch (e) {
+                                        reject(e);
+                                    }
+                                });
+                            } catch (e) {
+                                reject(e);
+                            }
+                        });
                     } catch (e) {
-                        reject(e);
+                        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)) {
+                            resolve(); // already exists, deduplicated
+                        } else {
+                            reject(e);
+                        }
                     }
-                }));
+                });
+            });
+        } catch (e) {
+            console.error('WinV writeEntryFile:', e);
+        }
     }
 
     async deleteEntryFile(entry) {
         if (!entry.isImage()) return;
         const path = this.imageFilePath(entry);
-        if (!GLib.file_test(path, FileTest.EXISTS)) return;
         try {
             const file = Gio.File.new_for_path(path);
             await new Promise((resolve, reject) => {
@@ -206,7 +234,11 @@ export class Registry {
                         obj.delete_finish(res);
                         resolve();
                     } catch (e) {
-                        reject(e);
+                        if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) {
+                            resolve();
+                        } else {
+                            reject(e);
+                        }
                     }
                 });
             });
@@ -223,7 +255,7 @@ export class Registry {
         
         try {
             await previousLock;
-            this.ensureDir();
+            await this.ensureDir();
             const serializable = [];
             for (const entry of entries) {
                 const item = {
@@ -250,8 +282,8 @@ export class Registry {
         }
     }
 
-    _writeJson(json) {
-        this.ensureDir();
+    async _writeJson(json) {
+        await this.ensureDir();
         const bytes = new GLib.Bytes(json);
         const file = Gio.File.new_for_path(this.REGISTRY_PATH);
         return new Promise((resolve, reject) =>
@@ -263,8 +295,14 @@ export class Registry {
                             (w_obj, w_res) => {
                                 try {
                                     w_obj.write_bytes_finish(w_res);
-                                    stream.close(null);
-                                    resolve();
+                                    stream.close_async(GLib.PRIORITY_DEFAULT, null, (c_obj, c_res) => {
+                                        try {
+                                            c_obj.close_finish(c_res);
+                                            resolve();
+                                        } catch (e) {
+                                            reject(e);
+                                        }
+                                    });
                                 } catch (e) {
                                     reject(e);
                                 }
@@ -276,17 +314,24 @@ export class Registry {
     }
 
     async read() {
-        if (!GLib.file_test(this.REGISTRY_PATH, FileTest.EXISTS)) return [];
         const file = Gio.File.new_for_path(this.REGISTRY_PATH);
-        const [ok, contents] = await new Promise((resolve, reject) =>
-            file.load_contents_async(null, (obj, res) => {
-                try {
-                    resolve(obj.load_contents_finish(res));
-                } catch (e) {
-                    reject(e);
-                }
-            }));
-        if (!ok) return [];
+        let contents;
+        try {
+            const [ok, c] = await new Promise((resolve, reject) =>
+                file.load_contents_async(null, (obj, res) => {
+                    try {
+                        resolve(obj.load_contents_finish(res));
+                    } catch (e) {
+                        reject(e);
+                    }
+                }));
+            if (!ok) return [];
+            contents = c;
+        } catch (e) {
+            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) return [];
+            console.error('WinV registry read failed:', e);
+            return [];
+        }
 
         const text = new TextDecoder().decode(contents);
         if (!text.trim()) return [];
@@ -320,10 +365,10 @@ export class Registry {
 
     async readRecentEmojis() {
         const path = `${this.CACHE_DIR}/recent_emojis.json`;
-        if (!GLib.file_test(path, FileTest.EXISTS)) return [];
         const file = Gio.File.new_for_path(path);
+        let contents;
         try {
-            const [ok, contents] = await new Promise((resolve, reject) =>
+            const [ok, c] = await new Promise((resolve, reject) =>
                 file.load_contents_async(null, (obj, res) => {
                     try {
                         resolve(obj.load_contents_finish(res));
@@ -332,16 +377,24 @@ export class Registry {
                     }
                 }));
             if (!ok) return [];
+            contents = c;
+        } catch (e) {
+            if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) return [];
+            console.error('WinV readRecentEmojis:', e);
+            return [];
+        }
+
+        try {
             const text = new TextDecoder().decode(contents);
             return JSON.parse(text);
         } catch (e) {
-            console.error('WinV readRecentEmojis:', e);
+            console.error('WinV readRecentEmojis parsing failed:', e);
             return [];
         }
     }
 
     async writeRecentEmojis(emojis) {
-        this.ensureDir();
+        await this.ensureDir();
         const json = JSON.stringify(emojis);
         const bytes = new GLib.Bytes(json);
         const path = `${this.CACHE_DIR}/recent_emojis.json`;
@@ -355,8 +408,14 @@ export class Registry {
                             (w_obj, w_res) => {
                                 try {
                                     w_obj.write_bytes_finish(w_res);
-                                    stream.close(null);
-                                    resolve();
+                                    stream.close_async(GLib.PRIORITY_DEFAULT, null, (c_obj, c_res) => {
+                                        try {
+                                            c_obj.close_finish(c_res);
+                                            resolve();
+                                        } catch (e) {
+                                            reject(e);
+                                        }
+                                    });
                                 } catch (e) {
                                     reject(e);
                                 }

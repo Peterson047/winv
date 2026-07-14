@@ -122,11 +122,10 @@ export default class WinVExtension extends Extension {
         }
     }
 
-    // When a shortcut is remapped in prefs, re-resolve against system bindings:
-    // return the old accelerator to the tray and claim the new one.
+    // When a shortcut is remapped in prefs, sync keybindings:
+    // return the old accelerator to the tray, claim the new one, and re-bind.
     _onShortcutRemapped() {
-        if (!this._settings.get_boolean(Prefs.ENABLE_KEYBINDINGS)) return;
-        this._resolveKeybindConflicts();
+        this._syncKeybindings();
     }
 
     // Push both of our current accelerators to the resolver, which diffs against
@@ -208,9 +207,11 @@ export default class WinVExtension extends Extension {
                     }
                 }
 
-                if (this._indicator?._content?._emojiView) {
-                    this._indicator._content._emojiView._all = this._emojiData;
-                    this._indicator._content._emojiView._populate();
+                if (this._indicator) {
+                    this._indicator.setEmojiData(this._emojiData);
+                    if (this._indicator._content?._emojiView) {
+                        this._indicator._content._emojiView.refresh();
+                    }
                 }
             } catch (e) {
                 console.error('WinV: emoji.json load failed:', e);

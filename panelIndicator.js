@@ -21,8 +21,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { POPUP_WIDTH, POPUP_MAX_HEIGHT } from './constants.js';
 import { WinvContent } from './winvView.js';
 
-export const WinVIndicator = GObject.registerClass(
-class WinVIndicator extends PanelMenu.Button {
+export const WinVIndicator = GObject.registerClass({
+    GTypeName: 'WinVIndicator',
+}, class WinVIndicator extends PanelMenu.Button {
     _init() {
         // 0.5 = center-aligned; nameText for a11y. dontCreateMenu=false (default).
         super._init(0.5, 'WinV');

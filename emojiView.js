@@ -6,6 +6,8 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GObject from 'gi://GObject';
 
+import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
+
 import { EMOJI_GRID_COLUMNS } from './constants.js';
 
 // Category icons. We use the Adwaita "emoji-*" symbolic set, which is shipped
@@ -24,6 +26,7 @@ const CATEGORY_ICONS = {
 };
 
 const EmojiCell = GObject.registerClass({
+    GTypeName: 'WinVEmojiCell',
     Signals: {
         'selected': { param_types: [GObject.TYPE_JSOBJECT] },
     },
@@ -156,7 +159,7 @@ export class EmojiView {
         const visible = this._visibleEmojis();
         if (!visible.length) {
             this._gridContainer.add_child(new St.Label({
-                text: 'Nenhum emoji encontrado',
+                text: _('Nenhum emoji encontrado'),
                 style_class: 'winv-empty-hint',
                 x_align: Clutter.ActorAlign.CENTER,
             }));

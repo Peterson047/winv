@@ -12,6 +12,7 @@ import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 
+import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { ROW_PREVIEW_CHARS } from './constants.js';
 import { DialogManager } from './confirmDialog.js';
@@ -27,15 +28,16 @@ function relativeTime(ts) {
     if (!ts) return '';
     const diff = Date.now() - ts;
     const min = 60_000, hr = 3_600_000, day = 86_400_000;
-    if (diff < min) return 'agora';
-    if (diff < hr)   return `${Math.floor(diff / min)} min`;
-    if (diff < day)  return `${Math.floor(diff / hr)} h`;
-    return `${Math.floor(diff / day)} d`;
+    if (diff < min) return _('agora');
+    if (diff < hr)   return `${Math.floor(diff / min)} ${_('min')}`;
+    if (diff < day)  return `${Math.floor(diff / hr)} ${_('h')}`;
+    return `${Math.floor(diff / day)} ${_('d')}`;
 }
 
 // ---- A single history row ---------------------------------------------
 
 const HistoryRow = GObject.registerClass({
+    GTypeName: 'WinVHistoryRow',
     Signals: {
         'selected':   { param_types: [GObject.TYPE_JSOBJECT] },
         'toggle-pin': { param_types: [GObject.TYPE_JSOBJECT] },
@@ -177,14 +179,14 @@ export class ClipboardView {
         // Control bar: "Tudo | Fixado" on the left, "Limpar tudo" on the right.
         // Collapsing the footer into this row saves vertical space.
         const controlBar = new St.BoxLayout({ style_class: 'winv-tabs' });
-        this._tabAll = this._makeTab('Tudo', false);
-        this._tabFav = this._makeTab('Fixado', true);
+        this._tabAll = this._makeTab(_('Tudo'), false);
+        this._tabFav = this._makeTab(_('Fixado'), true);
         controlBar.add_child(this._tabAll);
         controlBar.add_child(this._tabFav);
         // Expander pushes the clear button to the far right.
         controlBar.add_child(new St.Widget({ x_expand: true }));
         const clearBtn = new St.Button({
-            label: 'Limpar tudo',
+            label: _('Limpar tudo'),
             style_class: 'winv-clear-all button',
             can_focus: true,
             y_align: Clutter.ActorAlign.CENTER,
@@ -199,6 +201,7 @@ export class ClipboardView {
             overlay_scrollbars: true,
             hscrollbar_policy: St.PolicyType.NEVER,
             vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            y_expand: true,
         });
         this._list = new St.BoxLayout({ vertical: true, style_class: 'winv-history-section' });
         this._scrollView.add_child(this._list);
@@ -207,11 +210,11 @@ export class ClipboardView {
         // Empty state
         this._empty = new St.BoxLayout({ vertical: true, style_class: 'winv-empty', visible: false });
         this._empty.add_child(new St.Label({
-            text: 'Nada copiado ainda', style_class: 'winv-empty-title',
+            text: _('Nada copiado ainda'), style_class: 'winv-empty-title',
             x_align: Clutter.ActorAlign.CENTER,
         }));
         this._empty.add_child(new St.Label({
-            text: 'Copie algo (Ctrl+C) e aparecerá aqui.', style_class: 'winv-empty-hint',
+            text: _('Copie algo (Ctrl+C) e aparecerá aqui.'), style_class: 'winv-empty-hint',
             x_align: Clutter.ActorAlign.CENTER,
         }));
         box.add_child(this._empty);
@@ -317,9 +320,9 @@ export class ClipboardView {
         };
         if (this.settings.get_boolean('confirm-clear')) {
             this._dialogs.open(
-                'Limpar histórico?',
-                'Todos os itens não fixados serão removidos.',
-                'Limpar', 'Cancelar', doClear);
+                _('Limpar histórico?'),
+                _('Todos os itens não fixados serão removidos.'),
+                _('Limpar'), _('Cancelar'), doClear);
         } else {
             doClear();
         }

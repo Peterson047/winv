@@ -46,11 +46,9 @@
 
 /* The title is the drag handle: hint that it's movable. */
 .winv-drag-handle {
-    cursor: grab;
 }
 
 .winv-drag-handle:dragging {
-    cursor: grabbing;
 }
 
 /* ===== Search entry ===== */
@@ -97,7 +95,6 @@
  * content overflows. y_expand makes it take the remaining vertical space. */
 .winv-scroll {
     padding: 0 2px;
-    y_expand: true;
 }
 
 /* ===== A single history row =====
@@ -125,7 +122,6 @@
 }
 
 .winv-row-preview {
-    max-width: 210px;
 }
 
 .winv-meta {
@@ -241,4 +237,13 @@
 
 .winv-category-btn:checked {
     background-color: rgba(128, 128, 128, 0.25);
+}
+
+/* ===== Dialog Title and Desc ===== */
+.winv-dialog-title {
+    font-weight: 700;
+}
+
+.winv-dialog-desc {
+    padding-top: 12px;
 }

@@ -16,6 +16,8 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 
+import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
+
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
@@ -76,7 +78,7 @@ export class WinvContent {
         this._search = new St.Entry({
             style_class: 'winv-search search-entry',
             can_focus: true,
-            hint_text: 'Pesquisar emoji…',
+            hint_text: _('Pesquisar emoji…'),
             track_hover: true,
             x_expand: true,
         });

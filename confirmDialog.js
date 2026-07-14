@@ -7,8 +7,9 @@ import GObject from 'gi://GObject';
 import Clutter from 'gi://Clutter';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
-const ConfirmDialog = GObject.registerClass(
-class ConfirmDialog extends ModalDialog.ModalDialog {
+const ConfirmDialog = GObject.registerClass({
+    GTypeName: 'WinVConfirmDialog',
+}, class ConfirmDialog extends ModalDialog.ModalDialog {
     _init(title, desc, okLabel, cancelLabel, callback) {
         super._init();
 
@@ -16,12 +17,12 @@ class ConfirmDialog extends ModalDialog.ModalDialog {
         this.contentLayout.add_child(messageBox);
 
         messageBox.add_child(new St.Label({
-            style: 'font-weight: 700',
+            style_class: 'winv-dialog-title',
             x_align: Clutter.ActorAlign.CENTER,
             text: title,
         }));
         messageBox.add_child(new St.Label({
-            style: 'padding-top: 12px',
+            style_class: 'winv-dialog-desc',
             x_align: Clutter.ActorAlign.CENTER,
             text: desc,
         }));
