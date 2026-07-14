@@ -28,7 +28,7 @@ export default class WinVPrefs extends ExtensionPreferences {
 
         const enableKeys = new Adw.SwitchRow({
             title: _('Ativar atalhos'),
-            subtitle: _('Liga/desliga Win+V e Win+E globalmente'),
+            subtitle: _('Liga/desliga Win+V e Win+. globalmente'),
         });
         group.add(enableKeys);
 
@@ -41,7 +41,7 @@ export default class WinVPrefs extends ExtensionPreferences {
         group.add(clipRow);
 
         const emojiRow = this._makeShortcutRow(
-            _('Abrir emojis (Win+E)'),
+            _('Abrir emojis (Win+.)'),
             _('Clique e pressione o atalho desejado'),
         );
         const emojiBtn = this._makeShortcutButton(settings, Prefs.EMOJI_KEYBINDING, emojiRow);

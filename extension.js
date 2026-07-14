@@ -1,4 +1,4 @@
-// WinV — Windows-style clipboard history (Win+V) + emoji picker (Win+E)
+// WinV — Windows-style clipboard history (Win+V) + emoji picker (Win+.)
 // GNOME 50 / ESM entry point.
 
 import Clutter from 'gi://Clutter';

@@ -76,7 +76,7 @@ O GNOME usa o sistema ESM (`import`) desde a versão 45. As APIs de UI (`PopupMe
 | R1 | `metadata.json` declara `shell-version` cobrindo 46 a 50 | `gnome-extensions info` mostra `State: ENABLED` (não OUT OF DATE) no GNOME 46 |
 | R2 | A extensão carrega sem erros no GNOME 46 | `enable()` executa; sem `JS ERROR` no journal do gnome-shell |
 | R3 | `Super+V` abre o histórico no GNOME 46 | Popup aparece no cursor com itens copiados |
-| R4 | `Super+E` abre o seletor de emoji no GNOME 46 | Grid de emojis aparece, busca funciona |
+| R4 | `Super+.` abre o seletor de emoji no GNOME 46 | Grid de emojis aparece, busca funciona |
 | R5 | Auto-paste funciona no GNOME 46 | Selecionar item / emoji cola no app focado |
 | R6 | `prefs.js` abre no GNOME 46 | Janela de preferências abre via `gnome-extensions prefs` |
 | R7 | O código continua funcionando em GNOME 50 | Mesmo código-fonte, sem `#ifdef` de versão |
@@ -124,7 +124,7 @@ Após cada mudança, executar este checklist:
 
 2. **Keybindings**
    - `Super+V` → abre popup na aba Clipboard
-   - `Super+E` → abre popup na aba Emoji
+   - `Super+.` → abre popup na aba Emoji
    - Pressionar de novo → fecha (toggle)
 
 3. **Clipboard**

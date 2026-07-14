@@ -47,6 +47,12 @@ export const CLIPBOARD_TYPE_STR = 'CLIPBOARD'; // for St.ClipboardType.CLIPBOARD
 export const SHELL_KEYBINDINGS_SCHEMA = 'org.gnome.shell.keybindings';
 export const MESSAGE_TRAY_KEY = 'toggle-message-tray';
 
+// IBus ships its own emoji panel on '<Super>.' (period) by default — the same
+// key we want for the emoji picker. Strip it (and restore on disable). The
+// schema may be absent on systems without IBus; the resolver handles that.
+export const IBUS_EMOJI_SCHEMA = 'org.freedesktop.ibus.panel.emoji';
+export const IBUS_EMOJI_KEY = 'hotkey';
+
 // UI sizing (logical px); final styling lives in stylesheet.css.
 // UI sizing (logical px); final styling lives in stylesheet.css.
 // Compact, like the Windows 11 flyout (~300px wide).

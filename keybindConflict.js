@@ -1,94 +1,119 @@
-// Resolves keybinding collisions between WinV's shortcuts and GNOME Shell's
-// own system bindings — most notably toggle-message-tray, which GNOME binds to
-// Super+V by default (the same key we want for the clipboard history).
+// Resolves keybinding collisions between WinV's shortcuts and other system
+// bindings — both GNOME Shell's own and IBus.
 //
-// Strategy: when WinV's clipboard shortcut is armed, strip it from the shell's
-// message-tray binding (preserving any OTHER accelerators there, like Super+m).
-// The original value is remembered and restored verbatim on disable, so we
-// never clobber a user's custom setup.
+// Known collisions:
+//   • toggle-message-tray (org.gnome.shell.keybindings) ships Super+V by
+//     default — same key we want for the clipboard history.
+//   • IBus emoji panel (org.freedesktop.ibus.panel.emoji) ships Super+. by
+//     default — same key we want for the emoji picker.
 //
-// We only ever touch toggle-message-tray: it's the one shell binding that
-// ships on Super+V and blocks us. Other shortcuts (Super+E etc.) don't collide
-// with anything native, so we leave them alone.
+// Strategy: for each target binding, snapshot its original accelerators the
+// first time we touch it, then strip any accelerator we're claiming and write
+// the filtered list back. On disable, every target is restored to its exact
+// original value, so a user's custom setup is never clobbered. Targets whose
+// schema isn't installed (e.g. no IBus) are skipped silently.
 
 import Gio from 'gi://Gio';
 
-import { SHELL_KEYBINDINGS_SCHEMA, MESSAGE_TRAY_KEY } from './constants.js';
+import {
+    SHELL_KEYBINDINGS_SCHEMA, MESSAGE_TRAY_KEY,
+    IBUS_EMOJI_SCHEMA, IBUS_EMOJI_KEY,
+} from './constants.js';
+
+// Each target is a system binding we may strip our accelerators from.
+// A target that can't be loaded (schema missing) reports unavailable = true and
+// is ignored.
+class Target {
+    constructor(schemaId, key) {
+        this.schemaId = schemaId;
+        this.key = key;
+        this.original = null;     // strv snapshot, or null until first touch
+        try {
+            this.settings = new Gio.Settings({ schema_id: schemaId });
+        } catch (e) {
+            this.settings = null;  // schema not installed on this system
+        }
+    }
+
+    get available() { return this.settings !== null; }
+
+    snapshot() {
+        this.original = this.settings.get_strv(this.key);
+    }
+
+    apply(claimed) {
+        if (!this.original) return;
+        const effective = this.original.filter(a => !claimed.has(a));
+        this.settings.set_strv(this.key, effective);
+    }
+
+    restore() {
+        if (!this.original) return;
+        this.settings.set_strv(this.key, this.original);
+        this.original = null;
+    }
+}
 
 export class KeybindConflictResolver {
     constructor() {
-        this._shell = new Gio.Settings({ schema_id: SHELL_KEYBINDINGS_SCHEMA });
-        // Snapshot of the user's message-tray binding, taken the first time we
-        // claim a key. We mutate a working copy and restore the original on
-        // releaseAll()/disable().
-        this._originalTray = null;
-        // The accelerators we currently hold (claimed from the tray).
+        this._targets = [
+            new Target(SHELL_KEYBINDINGS_SCHEMA, MESSAGE_TRAY_KEY),
+            new Target(IBUS_EMOJI_SCHEMA, IBUS_EMOJI_KEY),
+        ];
+        // Accelerators we currently hold across all targets.
         this._claimed = new Set();
     }
 
     /**
-     * Take ownership of `accel`: remove it from the message-tray binding if
-     * present (saving the original first). Idempotent — claiming an accel that
-     * is already claimed is a no-op.
+     * Take ownership of `accel` on any target that currently has it. Idempotent.
      */
     claim(accel) {
-        if (!accel) return;
-        if (!this._originalTray) this._snapshot();
-        if (this._claimed.has(accel)) return;       // already ours
-        if (!this._originalTray.includes(accel)) return; // never was on the tray
+        if (!accel || this._claimed.has(accel)) return;
         this._claimed.add(accel);
-        this._apply();
+        this._applyTargets();
     }
 
     /**
-     * Give `accel` back to the tray (when the user remaps our shortcut away from
-     * it). Idempotent.
-     */
-    release(accel) {
-        if (!accel || !this._claimed.has(accel)) return;
-        this._claimed.delete(accel);
-        this._apply();
-    }
-
-    /**
-     * Synchronise the set of accelerators we should own. Any accelerator we held
-     * that is no longer in `accels` is returned to the tray; any new one is
-     * claimed. Used when the user remaps a shortcut in prefs.
+     * Synchronise the set of accelerators we should own. Accelerators we held
+     * that are no longer in `accels` are returned to their targets; new ones are
+     * claimed. Used when the user remaps a shortcut in prefs or on enable.
      */
     sync(accels) {
-        if (!this._originalTray) this._snapshot();
         const want = new Set(accels.filter(a => a));
-        for (const a of this._claimed)
-            if (!want.has(a)) this._claimed.delete(a);
-        for (const a of want)
-            if (this._originalTray.includes(a)) this._claimed.add(a);
-        this._apply();
+        // Note: we don't subtract here — sync() defines the full desired set, so
+        // rebuild _claimed from scratch based on what targets actually contain.
+        this._claimed = new Set();
+        for (const accel of want) {
+            if (this._targets.some(t => t.available && this._targetHas(t, accel)))
+                this._claimed.add(accel);
+        }
+        this._applyTargets();
+    }
+
+    // Whether `accel` is present on a target's (snapshotted or live) binding.
+    _targetHas(target, accel) {
+        if (!target.original) target.snapshot();
+        return target.original.includes(accel);
+    }
+
+    _applyTargets() {
+        for (const t of this._targets) {
+            if (!t.available) continue;
+            if (!t.original) t.snapshot();
+            t.apply(this._claimed);
+        }
     }
 
     /**
-     * Restore the message-tray binding to exactly what it was before we touched
-     * it. Called from disable().
+     * Restore every target to its original value. Called from disable().
      */
     releaseAll() {
-        if (!this._originalTray) return;
-        this._shell.set_strv(MESSAGE_TRAY_KEY, this._originalTray);
-        this._originalTray = null;
+        for (const t of this._targets) t.restore();
         this._claimed.clear();
     }
 
     destroy() {
         this.releaseAll();
-        this._shell = null;
-    }
-
-    _snapshot() {
-        this._originalTray = this._shell.get_strv(MESSAGE_TRAY_KEY);
-    }
-
-    // Tray = original accelerators minus the ones we currently own.
-    _apply() {
-        if (!this._originalTray) return;
-        const effective = this._originalTray.filter(a => !this._claimed.has(a));
-        this._shell.set_strv(MESSAGE_TRAY_KEY, effective);
+        this._targets = [];
     }
 }

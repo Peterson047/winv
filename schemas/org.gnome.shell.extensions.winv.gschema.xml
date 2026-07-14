@@ -15,8 +15,8 @@
     </key>
 
     <key name="emoji-keybinding" type="as">
-      <default><![CDATA[['<Super>e']]]></default>
-      <summary>Open the emoji picker (Super+. conflicts with IBus)</summary>
+      <default><![CDATA[['<Super>period']]]></default>
+      <summary>Open the emoji picker (matches the Windows 11 Win+. shortcut)</summary>
     </key>
 
     <!-- Behaviour -->

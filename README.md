@@ -4,12 +4,12 @@
 
 ![WinV Demo](./public/demo.gif)
 
-WinV is a GNOME Shell extension that recreates the **Windows 11 "Win+V" clipboard**  
-**history** and the **"Win+E" emoji picker** — including the floating, cursor-anchored  
+WinV is a GNOME Shell extension that recreates the **Windows 11 "Win+V" clipboard**
+**history** and the **"Win+." emoji picker** — including the floating, cursor-anchored
 popup, drag-to-move window, pinned items, image support, and automatic paste.
 
-| **Clipboard history** (`Super`+`V`) | Text + images, search, pin, delete, clear |  
-| **Emoji picker** (`Super`+`E`) | 1500+ emojis with keyword search, categories |  
+| **Clipboard history** (`Super`+`V`) | Text + images, search, pin, delete, clear |
+| **Emoji picker** (`Super`+`.`) | 1500+ emojis with keyword search, categories |
 | **Cursor-anchored popup** | Opens at the pointer, clamped to the monitor |  
 | **Draggable window** | Grab the title or search bar to reposition |  
 | **Automatic paste** | Selected item / emoji is pasted into the focused app |  
@@ -24,7 +24,7 @@ to copy it back (and optionally auto-paste it with a synthesized
 Ctrl+V). Pin frequently-used snippets so they survive a  
 "clear all", or delete individual entries.
 
-Press Super+E and the same window switches to the emoji tab:  
+Press Super+. and the same window switches to the emoji tab:
 search by keyword ("heart", "thumbs up", "fire"), browse by category, and click  
 to insert. Both views share one floating window with a tab switcher — exactly  
 like Windows 11.
@@ -106,7 +106,7 @@ from `gnome-extensions prefs winv@peterson047.github.io`, or via the Extensions 
 | Setting | Default | Description |
 | --- | --- | --- |
 | Clipboard shortcut | `Super+V` | Opens the clipboard history |
-| Emoji shortcut | `Super+E` | Opens the emoji picker |
+| Emoji shortcut | `Super+.` | Opens the emoji picker |
 | History size | 50 | Maximum items kept (pinned items excluded) |
 | Store images | On | Include copied images in history |
 | Auto-paste | On | Simulate Ctrl+V after selecting an item |
@@ -173,7 +173,7 @@ winv@peterson047.github.io/
 | Shortcut | Action |
 | --- | --- |
 | Super+V | Open clipboard history |
-| Super+E | Open emoji picker |
+| Super+. | Open emoji picker |
 | Esc | Close popup |
 | Click outside | Close popup |
 | Drag title/search | Move popup |
