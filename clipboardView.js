@@ -161,6 +161,7 @@ export class ClipboardView {
         this._pasteTimeoutId = null;
 
         this._disconnectManager = this.manager.connect(() => {
+            if (this.manager._suppressNext) return;
             if (this.actor && this.actor.visible) {
                 this._rebuildRows();
             }
@@ -299,24 +300,13 @@ export class ClipboardView {
     }
 
     _onSelected(entry) {
-        this.manager.selectItem(entry)
-            .then(() => {
-                // Guard: the view may have been destroyed (popup closed +
-                // extension disabled) while selectItem() was awaiting.
-                if (this._destroyed) return;
-                // Close FIRST so the modal grab is released and focus returns
-                // to the target app before we synthesize Ctrl+V.
-                this.onClosed();
-                if (this.settings.get_boolean('paste-on-select')) {
-                    this._pasteTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
-                        this._pasteTimeoutId = null;
-                        if (!this._destroyed)
-                            this.extension.pasteIntoFocus();
-                        return GLib.SOURCE_REMOVE;
-                    });
-                }
-            })
-            .catch(e => console.error('WinV select:', e));
+        try {
+            this.manager.selectItem(entry);
+            if (this._destroyed) return;
+            this.extension._closeAndPaste(this.onClosed);
+        } catch (e) {
+            console.error('WinV select:', e);
+        }
     }
 
     _confirmClear() {

@@ -164,13 +164,19 @@ export class EmojiView {
         }
 
         // Render grouped by category when no query; flat when searching.
+        // Cap rendering at 70 emojis per category (grouped view) and 140 emojis
+        // (search results or specific category) to avoid thread blocks.
         let groups;
         if (this._query.trim()) {
-            groups = [{ name: null, items: visible }];
+            groups = [{ name: null, items: visible.slice(0, 140) }];
         } else {
             const order = [...new Set(this._all.map(e => e.category))];
+            const maxItems = this._category ? 140 : 70;
             groups = order
-                .map(name => ({ name, items: visible.filter(e => e.category === name) }))
+                .map(name => ({
+                    name,
+                    items: visible.filter(e => e.category === name).slice(0, maxItems)
+                }))
                 .filter(g => g.items.length);
         }
 
@@ -223,6 +229,24 @@ export class EmojiView {
             cell.connect('selected', (_c, e) => this._onSelected(e));
             this._recentRow.add_child(cell);
         }
+    }
+
+    setData(data) {
+        this._all = data || [];
+        if (this._catBar) {
+            this._catBar.destroy_all_children();
+            this._buildCategoryBar();
+        }
+    }
+
+    setQuery(query) {
+        this._query = query || '';
+        this._populate();
+    }
+
+    refresh() {
+        this._populate();
+        this._refreshRecent();
     }
 
     destroy() {}

@@ -15,8 +15,11 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-import { ClipboardEntry } from './registry.js';
+import { ClipboardEntry, trimHistory } from './registry.js';
 import { CLIPBOARD_MIMETYPES, MIMETYPE_NORMALIZE } from './constants.js';
+
+const SUPPRESS_REARM_MS = 150;
+const SAVE_DEBOUNCE_MS = 400;
 
 const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
@@ -140,18 +143,12 @@ export class ClipboardManager {
 
         this.entries.unshift(entry);
 
-        // Enforce cap: drop oldest non-favorite(s) until within size.
+        // Enforce cap: drop oldest non-favorite(s) until within size. Single
+        // pass (see trimHistory); delete dropped image blobs from disk.
         const maxSize = this.settings.get_int('history-size');
-        while (this.entries.filter(e => !e.isFavorite()).length > maxSize) {
-            // find last non-favorite
-            for (let i = this.entries.length - 1; i >= 0; i--) {
-                if (!this.entries[i].isFavorite()) {
-                    const [dropped] = this.entries.splice(i, 1);
-                    if (dropped.isImage())
-                        this.registry.deleteEntryFile(dropped).catch(()=>{});
-                    break;
-                }
-            }
+        for (const dropped of trimHistory(this.entries, maxSize)) {
+            if (dropped.isImage())
+                this.registry.deleteEntryFile(dropped).catch(() => {});
         }
 
         this._scheduleSave();
@@ -160,13 +157,17 @@ export class ClipboardManager {
 
     // Public: the UI calls this when the user re-selects an old item.
     // Writes it back to the clipboard (and moves it to top if configured).
-    async selectItem(entry) {
+    selectItem(entry) {
         this._suppressNext = true;
         try {
-            this.clipboard.set_content(CLIPBOARD_TYPE, entry.mimetype(), entry.asBytes());
+            if (entry.isText()) {
+                this.clipboard.set_text(CLIPBOARD_TYPE, entry.getStringValue());
+            } else {
+                this.clipboard.set_content(CLIPBOARD_TYPE, entry.mimetype(), entry.asBytes());
+            }
         } finally {
             // Re-arm after a short tick so our own write's owner-changed is skipped.
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, SUPPRESS_REARM_MS, () => {
                 this._suppressNext = false;
                 return GLib.SOURCE_REMOVE;
             });
@@ -225,7 +226,7 @@ export class ClipboardManager {
     // Debounced persistence: coalesce rapid bursts of copies.
     _scheduleSave() {
         if (this._destroyed || this._saveTimeoutId) return;
-        this._saveTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+        this._saveTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SAVE_DEBOUNCE_MS, () => {
             this._saveTimeoutId = null;
             if (!this._destroyed)
                 this.registry.write(this.entries).catch(e => console.error('WinV save:', e));

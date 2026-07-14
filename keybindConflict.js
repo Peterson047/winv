@@ -65,15 +65,6 @@ export class KeybindConflictResolver {
     }
 
     /**
-     * Take ownership of `accel` on any target that currently has it. Idempotent.
-     */
-    claim(accel) {
-        if (!accel || this._claimed.has(accel)) return;
-        this._claimed.add(accel);
-        this._applyTargets();
-    }
-
-    /**
      * Synchronise the set of accelerators we should own. Accelerators we held
      * that are no longer in `accels` are returned to their targets; new ones are
      * claimed. Used when the user remaps a shortcut in prefs or on enable.

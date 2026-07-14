@@ -73,20 +73,49 @@ export class ClipboardEntry {
     getTimestamp() { return this.#timestamp || 0; }
     setTimestamp(ts) { this.#timestamp = ts; }
 
-    // Human-readable text (for search + row preview).
+    // Human-readable text (for search + row preview). Memoized because the
+    // clipboard filter calls this on every entry for every search keystroke, and
+    // for images it would otherwise re-hash (SHA256) on each call.
     getStringValue() {
-        if (this.isImage()) return `[Image ${this.asBytes().hash()}]`;
-        return new TextDecoder().decode(this.#bytes);
+        if (this._stringValue === undefined)
+            this._stringValue = this.isImage()
+                ? `[Image ${this.hash()}]`
+                : new TextDecoder().decode(this.#bytes);
+        return this._stringValue;
     }
 
-    // Content hash for dedup (SHA256 hex). Stable across runs.
+    // Content hash for dedup (SHA256 hex). Stable across runs. Memoized: the
+    // bytes are immutable, and hash()/equals() are called repeatedly during
+    // dedup checks and searches.
     hash() {
-        return GLib.compute_checksum_for_bytes(GLib.ChecksumType.SHA256, this.asBytes());
+        if (this._hash === undefined)
+            this._hash = GLib.compute_checksum_for_bytes(GLib.ChecksumType.SHA256, this.asBytes());
+        return this._hash;
     }
 
     equals(other) {
         return other && this.hash() === other.hash();
     }
+}
+
+// Trim a history list to at most `maxSize` non-favorite entries, never dropping
+// favorites. Single pass from the end (oldest) so it stays O(n) instead of the
+// previous filter-in-while-loop O(n²). Returns the dropped entries so the caller
+// can delete their image blobs. Mutates `entries` in place.
+export function trimHistory(entries, maxSize) {
+    const dropped = [];
+    // Count current non-favorites.
+    let nonFavoriteCount = 0;
+    for (const e of entries) if (!e.isFavorite()) nonFavoriteCount++;
+    if (nonFavoriteCount <= maxSize) return dropped;
+    // Walk from the oldest (end); splice non-favorites until within budget.
+    for (let i = entries.length - 1; i >= 0 && nonFavoriteCount > maxSize; i--) {
+        if (entries[i].isFavorite()) continue;
+        dropped.push(entries[i]);
+        entries.splice(i, 1);
+        nonFavoriteCount--;
+    }
+    return dropped;
 }
 
 // ---- Registry: load/save the whole history ----------------------------
@@ -235,13 +264,7 @@ export class Registry {
 
         // Enforce history-size, never dropping favorites.
         const maxSize = this.settings.get_int('history-size');
-        let nonFavorite = entries.filter(e => !e.isFavorite());
-        while (nonFavorite.length > maxSize) {
-            const oldest = nonFavorite.shift();
-            const idx = entries.indexOf(oldest);
-            if (idx >= 0) entries.splice(idx, 1);
-            nonFavorite = entries.filter(e => !e.isFavorite());
-        }
+        trimHistory(entries, maxSize);
         return entries;
     }
 
@@ -292,19 +315,5 @@ export class Registry {
                         reject(e);
                     }
                 }));
-    }
-
-    async clearCacheFolder() {
-        try {
-            const folder = Gio.File.new_for_path(this.CACHE_DIR);
-            const enumerator = folder.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
-            let info;
-            while ((info = enumerator.next_file(null)) !== null) {
-                const child = enumerator.get_child(info);
-                child.delete_async(GLib.PRIORITY_DEFAULT, null).catch(e => console.error(e));
-            }
-        } catch (e) {
-            console.error('WinV clearCacheFolder:', e);
-        }
     }
 }

@@ -106,7 +106,9 @@ export class WinvContent {
             onClosed: this.onClosed,
             searchEntry: this._search,
         });
-        this._emojiView._all = this._emojiData;
+        // Seed the dataset before build() (when the category bar / grid don't
+        // exist yet setData just stores _all; build() does the first render).
+        this._emojiView.setData(this._emojiData);
         const emojiContent = this._emojiView.build();
         this._contentBox.add_child(emojiContent);
 
@@ -147,6 +149,21 @@ export class WinvContent {
         return btn;
     }
 
+    // ---- public API (collaborators must not reach into _emojiView/_activeTab) --
+
+    // Update the emoji dataset and re-render. Called by the extension when
+    // emoji.json finishes loading asynchronously. Also caches it on this
+    // instance so a later buildInto() picks it up. Forwards to the emoji view
+    // only if it has been built; otherwise setData is applied during build().
+    setEmojiData(data) {
+        this._emojiData = data || [];
+        this._emojiView?.setData(this._emojiData);
+    }
+
+    // Public read access to the currently-active tab so extension.js can
+    // implement its open() toggle without reading the private _activeTab.
+    get activeTab() { return this._activeTab; }
+
     _tabButton(tabId) {
         const btn = new St.Button({
             style_class: 'winv-tab winv-tab-icon',
@@ -178,9 +195,8 @@ export class WinvContent {
         if (this._emojiView) {
             this._emojiView.actor.visible = (tabId === TAB_EMOJI);
             if (tabId === TAB_EMOJI) {
-                this._emojiView._query = '';
-                this._emojiView._populate();
-                this._emojiView._refreshRecent();
+                this._emojiView.setQuery('');
+                this._emojiView.refresh();
             }
         }
     }
@@ -190,8 +206,7 @@ export class WinvContent {
         if (this._activeTab === TAB_CLIPBOARD && this._clipboardView) {
             this._clipboardView.setFilter(text);
         } else if (this._activeTab === TAB_EMOJI && this._emojiView) {
-            this._emojiView._query = text;
-            this._emojiView._populate();
+            this._emojiView.setQuery(text);
         }
     }
 

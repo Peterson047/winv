@@ -92,6 +92,24 @@ class WinVIndicator extends PanelMenu.Button {
 
     get isOpen() { return this.menu.isOpen; }
 
+    // ---- public API (extension.js must not reach into _content) ----------------
+
+    // Forward emoji data to the content once it has been built. Safe to call
+    // before the menu is opened: _content is null until _ensureContent() runs,
+    // in which case this is a no-op (the data is re-pushed on next build).
+    setEmojiData(data) {
+        this._content?.setEmojiData(data);
+    }
+
+    // Public read access to the active tab, forwarded to the content. Returns
+    // undefined before the content is built (extension.js only uses this when
+    // the menu is open, so _content is guaranteed to exist there).
+    get activeTab() { return this._content?.activeTab; }
+
+    // Switch the active tab of an already-open menu, forwarded to the content.
+    // No-op if the content hasn't been built yet.
+    switchTab(tabId) { this._content?.switchTab(tabId); }
+
     destroy() {
         if (this._content) { this._content.destroy(); this._content = null; }
         if (this._cursorActor) {

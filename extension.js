@@ -223,32 +223,20 @@ export default class WinVExtension extends Extension {
         this._registry.writeRecentEmojis(this._recentEmojis).catch(e => console.error(e));
     }
 
-    async copyAndPaste(text, closePopup) {
-        const clipboard = St.Clipboard.get_default();
-        clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
-        // Close the menu FIRST so the modal grab releases and keyboard focus
-        // returns to the target app. Then paste after a short delay (matches
-        // the clipboard-indicator timing of ~50ms).
+    _closeAndPaste(closePopup) {
         if (closePopup) closePopup();
         if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT))
             this._schedulePaste(() => this.pasteIntoFocus());
     }
 
+    copyAndPaste(text, closePopup) {
+        const clipboard = St.Clipboard.get_default();
+        clipboard.set_text(St.ClipboardType.CLIPBOARD, text);
+        this._closeAndPaste(closePopup);
+    }
+
     commitEmoji(char, closePopup) {
-        if (closePopup) closePopup();
-        if (this._settings.get_boolean(Prefs.PASTE_ON_SELECT)) {
-            this._schedulePaste(() => {
-                try {
-                    Main.inputMethod.commit(char);
-                } catch (e) {
-                    console.error('WinV: commit emoji failed, falling back to clipboard:', e);
-                    this.copyAndPaste(char, null);
-                }
-            });
-        } else {
-            const clipboard = St.Clipboard.get_default();
-            clipboard.set_text(St.ClipboardType.CLIPBOARD, char);
-        }
+        this.copyAndPaste(char, closePopup);
     }
 
     // Schedule a paste/commit shortly after closing the popup (gives the target
