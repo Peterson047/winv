@@ -49,7 +49,7 @@ export default class WinVExtension extends Extension {
         // Top-bar indicator — owns the PopupMenu (the popup window).
         this._indicator = new WinVIndicator();
         // Left-click opens the clipboard tab (Windows-style "open here").
-        this._indicator.connect('button-press-event', (_i, event) => {
+        this._indicatorSignalId = this._indicator.connect('button-press-event', (_i, event) => {
             if (event.get_button() === Clutter.BUTTON_PRIMARY) {
                 this.open(TAB.CLIPBOARD);
                 return Clutter.EVENT_STOP;
@@ -76,6 +76,10 @@ export default class WinVExtension extends Extension {
     disable() {
         if (this._indicator) {
             this._indicator.close();
+            if (this._indicatorSignalId) {
+                this._indicator.disconnect(this._indicatorSignalId);
+                this._indicatorSignalId = null;
+            }
             this._indicator.destroy();
             this._indicator = null;
         }

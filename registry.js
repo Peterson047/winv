@@ -10,7 +10,9 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
-
+function _logError(msg, err) {
+    console.error(msg, err);
+}
 
 // ---- ClipboardEntry: one item of history ------------------------------
 
@@ -182,7 +184,7 @@ export class Registry {
                 dir.make_directory_with_parents(null);
             } catch (err) {
                 if (!err.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS)) {
-                    console.error('WinV ensureDir error:', err);
+                    _logError('WinV ensureDir error:', err);
                 }
             }
         }
@@ -229,7 +231,7 @@ export class Registry {
                 });
             });
         } catch (e) {
-            console.error('WinV writeEntryFile:', e);
+            _logError('WinV writeEntryFile:', e);
         }
     }
 
@@ -253,7 +255,7 @@ export class Registry {
                 });
             });
         } catch (e) {
-            console.error('WinV deleteEntryFile:', e);
+            _logError('WinV deleteEntryFile:', e);
         }
     }
 
@@ -339,7 +341,7 @@ export class Registry {
             contents = c;
         } catch (e) {
             if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) return [];
-            console.error('WinV registry read failed:', e);
+            _logError('WinV registry read failed:', e);
             return [];
         }
 
@@ -350,7 +352,7 @@ export class Registry {
         try {
             registry = JSON.parse(text);
         } catch (e) {
-            console.error('WinV: registry.txt is corrupt, ignoring:', e);
+            _logError('WinV: registry.txt is corrupt, ignoring:', e);
             return [];
         }
 
@@ -358,7 +360,7 @@ export class Registry {
             try {
                 return await ClipboardEntry.fromJSON(item, this.CACHE_DIR);
             } catch (e) {
-                console.error('WinV: error loading registry entry:', e);
+                _logError('WinV: error loading registry entry:', e);
                 return null;
             }
         }))).filter(e => e !== null);
@@ -390,7 +392,7 @@ export class Registry {
             contents = c;
         } catch (e) {
             if (e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) return [];
-            console.error('WinV readRecentEmojis:', e);
+            _logError('WinV readRecentEmojis:', e);
             return [];
         }
 
@@ -398,7 +400,7 @@ export class Registry {
             const text = new TextDecoder().decode(contents);
             return JSON.parse(text);
         } catch (e) {
-            console.error('WinV readRecentEmojis parsing failed:', e);
+            _logError('WinV readRecentEmojis parsing failed:', e);
             return [];
         }
     }

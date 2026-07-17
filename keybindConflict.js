@@ -52,6 +52,10 @@ class Target {
         this.settings.set_strv(this.key, this.original);
         this.original = null;
     }
+
+    destroy() {
+        this.settings = null;
+    }
 }
 
 export class KeybindConflictResolver {
@@ -105,6 +109,7 @@ export class KeybindConflictResolver {
 
     destroy() {
         this.releaseAll();
+        for (const t of this._targets) t.destroy();
         this._targets = [];
     }
 }

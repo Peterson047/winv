@@ -9,9 +9,6 @@
         "49",
         "50"
     ],
-    "session-modes": [
-        "user"
-    ],
     "url": "https://github.com/Peterson047/winv",
     "settings-schema": "org.gnome.shell.extensions.winv",
     "gettext-domain": "winv",

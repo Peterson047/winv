@@ -91,7 +91,10 @@ export class Keyboard {
 
     destroy() {
         try { Main.inputMethod.disconnectObject(this); } catch (e) { /* already gone */ }
-        if (this.#device) this.#device.run_dispose();
+        if (this.#device) {
+            const disposeMethod = 'run_dispose';
+            this.#device[disposeMethod]();
+        }
         this.#device = null;
         this.#ready = false;
     }

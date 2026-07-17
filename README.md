@@ -1,232 +1,116 @@
-## WinV — Clipboard &amp; Emoji for GNOME
+# 🧠 Autocritic-Skill — AI Self-Review, Check-In & State Persistence Protocol
 
-&gt; Bring the Windows 11 clipboard history and emoji picker experience to GNOME.
+> [!NOTE]
+> This project implements a high-level behavioral guideline and a shell-based state synchronization protocol for terminal-based AI Agents (such as Claude Code, Gemini CLI, Codex, Aider, etc.). It prevents unverified modifications, silences fake verification theater, and forces the agent to review its own output before delivering it.
 
-![WinV Demo](./public/demo.gif)
+---
 
-WinV is a GNOME Shell extension that recreates the **Windows 11 "Win+V" clipboard**
-**history** and the **"Win+." emoji picker** — including the floating, cursor-anchored
-popup, drag-to-move window, pinned items, image support, and automatic paste.
+## 💎 What is Autocritic-Skill?
 
-| **Clipboard history** (`Super`+`V`) | Text + images, search, pin, delete, clear |
-| **Emoji picker** (`Super`+`.`) | 1500+ emojis with keyword search, categories |
-| **Cursor-anchored popup** | Opens at the pointer, clamped to the monitor |  
-| **Draggable window** | Grab the title or search bar to reposition |  
-| **Automatic paste** | Selected item / emoji is pasted into the focused app |  
-| **Theme-aware** | Adapts to light or dark GNOME shell themes |  
-| **Top-bar indicator** | Quick access button with preferences menu |
+**Autocritic-Skill** redefines how AI assistants behave during software development. Instead of acting in a purely "helpful" manner — which often leads to guesswork, unchecked modifications, and unverified boilerplate — this protocol makes the agent behave like a collaborative partner: it investigates freely, asks only when the ambiguity is real, always shares its plan before touching anything, and silently reviews its own draft against a fixed checklist before delivering it. Operational state is persisted directly inside your repository so context survives terminal session restarts.
 
-## How it works
-
-Press Super+V anywhere and a compact popup appears next to  
-your cursor showing everything you've copied — most recent first. Click an item  
-to copy it back (and optionally auto-paste it with a synthesized  
-Ctrl+V). Pin frequently-used snippets so they survive a  
-"clear all", or delete individual entries.
-
-Press Super+. and the same window switches to the emoji tab:
-search by keyword ("heart", "thumbs up", "fire"), browse by category, and click  
-to insert. Both views share one floating window with a tab switcher — exactly  
-like Windows 11.
-
-The popup can be dragged anywhere on screen by its title or search bar, and it  
-dismisses when you click outside it or press Esc.
-
-## Features in detail
-
-### Clipboard history
-
-*   **Text and images** — copied screenshots and images appear as thumbnails.
-*   **Search** — filter the history live as you type.
-*   **Pin / unpin** — starred items are kept across clears and never expire.
-*   **Configurable history size** (default: 50 items).
-*   **Persistence** — history survives logouts and reboots.
-*   **Smart dedup** — re-copying the same content moves it to the top instead of duplicating.
-*   **Whitespace trimming** option for cleaner text entries.
-
-### Emoji picker
-
-*   **1500+ emojis** sourced from Unicode CLDR annotations.
-*   **Keyword search** across all categories.
-*   **Category bar** to jump between Smileys, Animals, Food, Activities, Symbols, Flags, etc.
-*   **Automatic insertion** into the focused app (with graceful fallback to copy-only).
-
-### Window behavior
-
-*   Opens at the **mouse cursor** (like Windows) or centered (configurable).
-*   **Draggable** — grab the header title or the search field.
-*   **Click-outside-to-close** and Esc to dismiss.
-*   **Modal grab** — keyboard input is captured while open, then restored.
-
-## Installation
-
-### From source (development)
-
-```plaintext
-# 1. Clone
-git clone https://github.com/Peterson047/winv.git
-cd winv
-
-# 2. Compile the GSettings schema
-glib-compile-schemas schemas/
-
-# 3. Install into your local extensions directory
-cp -r . ~/.local/share/gnome-shell/extensions/winv@peterson047.github.io
-
-# 4. Enable it
-gnome-extensions enable winv@peterson047.github.io
+```mermaid
+graph TD
+    A["User request"] --> B{"Ambiguity level?"}
+    B -->|HIGH: deliverable/stack/scope unclear| C["Stop — ask max 3 questions,
+    or present the 4-Option Rule
+    if it's a design tradeoff"]
+    B -->|LOW/MEDIUM: minor details missing| D["Assume best practice,
+    investigate freely"]
+    C --> E["User answers"]
+    E --> F
+    D --> F["Check-in: share findings
+    + planned actions"]
+    F --> G["User approves / adjusts"]
+    G --> H["Self-review: fixed checklist
+    + domain lenses, silent correction"]
+    H --> I["Deliver polished output only"]
+    I --> J["Update state in
+    .agent/state/*.md via shell"]
 ```
 
-Then **restart GNOME Shell** to load the extension:
+---
 
-*   **Wayland** (default on Ubuntu 26.04): log out and back in.
-*   **X11**: press Alt+F2, type `r`, press Enter.
+## 🌟 Key Features
 
-&gt; 💡 **Development tip:** For faster iteration, log into a **"GNOME on Xorg"**  
-&gt; session from the login screen. This lets you restart the shell instantly with  
-&gt; Alt+F2 → `r` without closing your applications.
+| Feature | Description | Key Benefit |
+| :--- | :--- | :--- |
+| **Adaptive Ambiguity Routing** | HIGH ambiguity (unclear deliverable, stack, or conflicting constraints) stops the agent to ask up to 3 questions. LOW/MEDIUM ambiguity is resolved with industry best practice, no question asked. | Eliminates both reckless guessing and pointless clarifying questions. |
+| **Check-In Before Acting** | After investigating, the agent shares what it found and what it plans to do — and waits for your response — before modifying anything. | You catch dependencies and context the agent may have missed, before any change lands. |
+| **Invisible Self-Review** | Before delivering, the agent re-reads its own draft against a fixed checklist and domain-specific lenses (code / text / architecture), correcting silently. The checklist is mandatory — a plain "looks fine" pass doesn't count as a review. | Catches logical gaps, unjustified claims, and scope drift before you ever see them. |
+| **No Fake Testing** | The agent never appends `assert`/`console.log` blocks or "if you run this..." simulations to *prove* its own output works — that's theater, not verification. | No wasted tokens on demonstrations that verify nothing. |
+| **The 4-Option Rule** | When ambiguity is HIGH *and* it's a genuine design tradeoff (not just a missing fact), the agent presents exactly 4 distinct paths, one marked as recommended. | You keep full control over architectural decisions with a clear default. |
+| **Layer Priority Under Constraints** | If a model can't sustain every behavior at once, it degrades in a fixed order — check-in before acting is never dropped; state persistence is dropped first. | Predictable degradation instead of random behavior loss on weaker models. |
+| **Shell-Based State Persistence** | Operational state (`context.md`, `decisions.md`, `uncertainties.md`) is persisted to local Markdown files via plain shell redirection — no external scripts. Logs rotate at ~200 lines to an archive file. | Persistent, auditable context across terminal session restarts, without unbounded log growth. |
 
-### From extensions.gnome.org
+---
 
-_(Coming soon — pending review.)_ Search for "WinV" on  
-[extensions.gnome.org](https://extensions.gnome.org) and click install.
+## 📂 Package Directory Structure (`autocritic-skill/`)
 
-### Verify it's running
+Everything required for the agent to operate is unified inside this single isolated folder:
 
-```plaintext
-gnome-extensions list | grep winv
-gnome-extensions info winv@peterson047.github.io
+*   `SKILL.md` — The core instruction set: ambiguity routing, check-in protocol, self-review mechanism, state persistence, and layer priority.
+*   `README.md` — This quickstart guide.
+*   `references/model-behavior.md` — How Claude, Gemini, and GPT-4 each interpret the instructions differently, and why the skill holds across all three.
+*   `references/design-rationale.md` — Why invisible review beats verbalized critique, why ambiguity routing beats "always ask," edge cases and limitations, and the detailed domain-lens checklists.
+*   `.agent/state/context.md` — Tracks the active phase (Research, Strategy, Execution, Validation) and current status. Overwritten each phase transition — not a log.
+*   `.agent/state/decisions.md` — Chronological table logging all user choices and autonomous assumptions, with rationale. Also where substantive self-review corrections are logged for auditability.
+*   `.agent/state/uncertainties.md` — Queue of open questions deferred under LOW/MEDIUM ambiguity, in case they need revisiting later.
+
+> [!TIP]
+> If your project already uses a state convention such as `.specify/` or `.cursor/`, the agent will use that instead of creating `.agent/state/` — check for an existing convention before assuming the default path.
+
+---
+
+## ⚡ How it Works & Quickstart
+
+### 1. Copy to your Project
+Simply copy this `autocritic-skill` directory to the root of any repository:
+```bash
+cp -r /path/to/autocritic-skill /your-project/
 ```
 
-## Configuration
+### 2. Activation
+When starting a terminal session with an AI agent, it will automatically load `SKILL.md`. To guarantee activation, you can explicitly prompt:
+> *"Please load and strictly follow the behavioral rules and state persistence protocols in `autocritic-skill/SKILL.md`."*
 
-Open preferences from the **top-bar indicator** (right-click → _Preferences_),  
-from `gnome-extensions prefs winv@peterson047.github.io`, or via the Extensions app.
+### 3. Example Execution Flow — High Ambiguity
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| Clipboard shortcut | `Super+V` | Opens the clipboard history |
-| Emoji shortcut | `Super+.` | Opens the emoji picker |
-| History size | 50 | Maximum items kept (pinned items excluded) |
-| Store images | On | Include copied images in history |
-| Auto-paste | On | Simulate Ctrl+V after selecting an item |
-| Move reused to top | On | Re-copying moves the item to position 1 |
-| Confirm on clear | On | Ask before clearing history |
-| Trim whitespace | On | Strip leading/trailing whitespace from text |
-| Open at cursor | On | Position popup at the pointer (vs. centered) |
+If a user submits an ambiguous request like *"Create a database"*, the agent stops and responds with the 4-Option Rule, since this is a genuine design tradeoff:
 
-## Compatibility
+```text
+I need clarification on the following before proceeding:
+- What kind of data will it store, and roughly what scale?
+- Any existing infrastructure or hosting constraint?
 
-| GNOME Shell | Status |
-| --- | --- |
-| **50** | ✅ Primary target (Ubuntu 26.04 LTS) |
-| 49, 48, 47, 46 | ⚠️ Should work (ESM APIs are compatible); not yet tested |
+Option A (Recommended): SQLite for quick local development — zero setup, fine until you need concurrent writes.
+Option B: PostgreSQL in Docker — production-grade, more setup upfront.
+Option C: MongoDB — fits well if the data is document-shaped rather than relational.
+Option D: Supabase via REST API — managed Postgres with less ops overhead.
 
-The extension uses the modern **ESM module system** (`import` syntax) introduced  
-in GNOME 45. It targets GNOME 50 and is expected to be compatible with the  
-46–50 range; broader version tagging will follow testing.
-
-**Requirements:**
-
-*   GNOME Shell 46 or newer
-*   `gjs` 1.78+
-*   `Noto Color Emoji` font (pre-installed on most distros for emoji rendering)
-
-## Project structure
-
-```plaintext
-winv@peterson047.github.io/
-├── metadata.json              # Extension metadata (uuid, shell-version, schema)
-├── extension.js               # Entry point: enable/disable, keybindings, orchestration
-├── prefs.js                   # Preferences UI (GTK4 / libadwaita)
-├── stylesheet.css             # Theme-aware styling (layers on St's native classes)
-├── constants.js               # Shared keys, mimetypes, sizing constants
-│
-├── clipboardManager.js        # Meta.Selection 'owner-changed' listener + history logic
-├── registry.js                # Persistence (JSON + image blobs in ~/.cache)
-├── clipboardView.js           # Clipboard tab: list, search, pin, delete, clear
-├── emojiView.js               # Emoji tab: grid, categories, keyword search
-├── winvView.js                # Unified window: header, tab switcher, shared search
-├── panelIndicator.js          # Top-bar button (PanelMenu.Button)
-├── keyboard.js                # Synthetic keyboard for auto-paste (Ctrl+V)
-├── confirmDialog.js           # ModalDialog wrapper for confirmations
-├── emoji.json                 # Bundled emoji + keyword data (Unicode CLDR)
-│
-└── schemas/
-    └── org.gnome.shell.extensions.winv.gschema.xml
+How would you like to proceed?
 ```
 
-### Architecture notes
+### 4. Example Execution Flow — Low Ambiguity + Check-In
 
-*   **No polling.** Clipboard changes are detected via `Meta.Selection::'owner-changed'`,  
-    which fires exactly when an app sets the clipboard — zero CPU when idle.
-*   **Single window, two tabs.** Clipboard and Emoji share one `Popup` instance;  
-    `Super+V` and `Super+.` select which tab is shown.
-*   **Theme-adaptive.** The popup reuses GNOME's native `.popup-menu-content`,  
-    `.search-entry`, and `.popup-menu-item` classes, so it automatically matches  
-    light/dark themes. `stylesheet.css` only adds Windows-style rounding and spacing.
-*   **Safe lifecycle.** Everything created in `enable()` is destroyed in `disable()`  
-    — no leaked actors, signals, or timeouts (required for extensions.gnome.org review).
+For a well-scoped request like *"the drag isn't working on the top bar"*, the agent investigates on its own, then checks in before touching any file:
 
-## Keyboard shortcuts
+```text
+I found that topBar is missing reactive: true, and makeDraggable
+isn't passed to EmojiView — so drag only works on the main bar.
 
-| Shortcut | Action |
-| --- | --- |
-| Super+V | Open clipboard history |
-| Super+. | Open emoji picker |
-| Esc | Close popup |
-| Click outside | Close popup |
-| Drag title/search | Move popup |
-| ↑ ↓ Enter | Navigate and select items |
+I plan to:
+1. Add reactive: true to topBar
+2. Pass makeDraggable when instantiating EmojiView
 
-All shortcuts are customizable in Preferences.
-
-e
-
-## Debugging
-
-```plaintext
-# Watch the gnome-shell journal for WinV output
-journalctl -f /usr/bin/gnome-shell | grep winv
-ea
-# Open Looking Glass (live JS inspector + error log)
-# Alt+F2 → type "lg" → Enter
+What do you think?
 ```
 
-Useful Looking Glass commands:
+Once you approve, the agent makes the change, silently self-reviews it against the checklist, and only then logs the decision:
 
-*   `Main.extensions['winv@peterson047.github.io']` — inspect extension state
-*   Check the **Errors** tab for criticals
-
-## Known limitations
-
-*   **Auto-paste on Wayland** uses a Clutter virtual input device to synthesize  
-    Ctrl+V. If the focused app ignores synthetic input, the  
-    item is still copied to the clipboard — just press Ctrl+V manually.
-*   **Emoji rendering** depends on `Noto Color Emoji` being installed. Most distros  
-    ship it by default.
-
-## Contributing
-
-Contributions are welcome! Please open an issue first to discuss what you'd like  
-to change.
-
-1.  Fork the repository
-2.  Create a feature branch (`git checkout -b feature/amazing-thing`)
-3.  Test on X11 for fast iteration (`Alt+F2` → `r`)
-4.  Commit with clear messages
-5.  Open a Pull Request
-
-## Credits
-
-*   Emoji keyword data adapted from  
-    [emoji-selector-for-gnome](https://github.com/maoschanz/emoji-selector-for-gnome)  
-    by maoschanz (GPL-3.0).
-*   Clipboard detection pattern informed by  
-    [clipboard-indicator](https://github.com/Tudmotu/gnome-shell-extension-clipboard-indicator)  
-    by Tudmotu (GPL-2.0+).
-
-## License
-
-Copyright © 2026 Peterson Alves. Licensed under the  
-[GNU General Public License v3.0](LICENSE).
+```bash
+# Background command executed by the agent
+cat << 'EOF' >> autocritic-skill/.agent/state/decisions.md
+| 2026-07-17T10:00:00-03:00 | Drag fix | topBar reactive + makeDraggable passthrough | User-approved bug fix |
+EOF
+```
